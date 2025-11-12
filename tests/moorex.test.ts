@@ -58,6 +58,7 @@ describe('createMoorex', () => {
     );
 
     expect(completion?.effect.key).toBe('alpha');
+    expect(completion?.effectCount).toBe(0);
   });
 
   test('cancels effects that are no longer requested', async () => {
@@ -87,24 +88,35 @@ describe('createMoorex', () => {
     expect(cancelCalls).toBe(1);
     const cancelEvent = events.find((event) => event.type === 'effect-canceled');
     expect(cancelEvent?.effect.key).toBe('alpha');
+    expect(cancelEvent?.effectCount).toBe(0);
+
+    const stateUpdated = events.find(
+      (event): event is Extract<typeof event, { type: 'state-updated' }> =>
+        event.type === 'state-updated',
+    );
+    expect(stateUpdated?.effectCount).toBe(0);
+    expect(stateUpdated?.state.active).toBe(false);
   });
 
   test('allows running effects to dispatch new signals', async () => {
-    type State = { count: number };
+    type State = { count: number; active: boolean };
 
     const definition: MoorexDefinition<State, NumberSignal, NumberEffect> = {
-      initialState: { count: 0 },
+      initialState: { count: 0, active: false },
       transition: (signal) => (state) => {
-        if (signal === 'increment') return { count: state.count + 1 };
+        if (signal === 'increment') return { count: state.count + 1, active: state.active };
+        if (signal === 'toggle') return { count: state.count, active: !state.active };
         return state;
       },
       effectsAt: (state) =>
-        state.count === 0 ? [{ key: 'alpha', label: 'incrementer' }] : [],
+        state.active && state.count === 0 ? [{ key: 'alpha', label: 'incrementer' }] : [],
       runEffect: (_effect, dispatch) => {
-        queueMicrotask(() => dispatch('increment'));
+        const deferred = createDeferred();
+        dispatch('increment');
+        queueMicrotask(deferred.resolve);
         return {
-          complete: Promise.resolve(),
-          cancel: () => {},
+          complete: deferred.promise,
+          cancel: deferred.resolve,
         };
       },
     };
@@ -113,14 +125,28 @@ describe('createMoorex', () => {
     const events: MoorexEvent<State, NumberSignal, NumberEffect>[] = [];
     moorex.on((event) => events.push(event));
 
+    moorex.dispatch('toggle');
     await nextTick();
 
     expect(moorex.getState().count).toBe(1);
+    const started = events.find(
+      (event): event is Extract<typeof event, { type: 'effect-started' }> =>
+        event.type === 'effect-started',
+    );
+    expect(started?.effectCount).toBe(1);
     const signalEvent = events.find(
       (event): event is Extract<typeof event, { type: 'signal-received' }> =>
-        event.type === 'signal-received',
+        event.type === 'signal-received' && event.signal === 'increment',
     );
     expect(signalEvent?.signal).toBe('increment');
+    expect(signalEvent?.effectCount).toBeGreaterThanOrEqual(0);
+
+    const stateUpdates = events.filter(
+      (event): event is Extract<typeof event, { type: 'state-updated' }> =>
+        event.type === 'state-updated',
+    );
+    expect(stateUpdates.at(-1)?.state.count).toBe(1);
+    expect(stateUpdates.at(-1)?.effectCount).toBe(0);
   });
 
   test('ignores completion from cancelled effects', async () => {
@@ -153,6 +179,7 @@ describe('createMoorex', () => {
 
     const canceled = events.find((event) => event.type === 'effect-canceled');
     expect(canceled?.effect.key).toBe('alpha');
+    expect(canceled?.effectCount).toBe(0);
   });
 
   test('dedupes effects sharing the same key', async () => {
@@ -235,6 +262,7 @@ describe('createMoorex', () => {
     );
     expect(failed?.effect.key).toBe('alpha');
     expect(failed?.error).toBe(error);
+    expect(failed?.effectCount).toBe(0);
   });
 
   test('emits effect-failed when runEffect throws', async () => {
@@ -264,6 +292,7 @@ describe('createMoorex', () => {
     );
     expect(failed?.effect.key).toBe('alpha');
     expect(failed?.error).toBe(error);
+    expect(failed?.effectCount).toBe(0);
   });
 
   test('emits effect-failed when completion rejects', async () => {
@@ -299,6 +328,7 @@ describe('createMoorex', () => {
     );
     expect(failed?.effect.key).toBe('alpha');
     expect(failed?.error).toBe(error);
+    expect(failed?.effectCount).toBe(0);
   });
 });
 

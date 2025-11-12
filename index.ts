@@ -17,12 +17,21 @@ export type MoorexDefinition<State, Signal, Effect extends HasKey> = {
   ) => EffectController;
 };
 
-export type MoorexEvent<State, Signal, Effect extends HasKey> =
-  | { type: 'signal-received'; signal: Signal; state: State }
+type MoorexEventBase<State, Signal, Effect extends HasKey> =
+  | { type: 'signal-received'; signal: Signal }
+  | { type: 'state-updated'; state: State }
   | { type: 'effect-started'; effect: Effect }
   | { type: 'effect-completed'; effect: Effect }
   | { type: 'effect-canceled'; effect: Effect }
   | { type: 'effect-failed'; effect: Effect; error: unknown };
+
+export type MoorexEvent<State, Signal, Effect extends HasKey> = MoorexEventBase<
+  State,
+  Signal,
+  Effect
+> & {
+  effectCount: number;
+};
 
 export type Moorex<State, Signal, Effect extends HasKey> = {
   dispatch(signal: Signal): void;
@@ -56,7 +65,7 @@ const isCurrentEffect = <Effect extends HasKey>(
 
 const cancelRunningEffect = <State, Signal, Effect extends HasKey>(
   entry: RunningEffect<Effect>,
-  emit: (event: MoorexEvent<State, Signal, Effect>) => void,
+  emit: (event: MoorexEventBase<State, Signal, Effect>) => void,
 ) => {
   try {
     entry.controller.cancel();
@@ -70,7 +79,7 @@ const cancelRunningEffect = <State, Signal, Effect extends HasKey>(
 const attachCompletionHandlers = <State, Signal, Effect extends HasKey>(
   entry: RunningEffect<Effect>,
   running: Map<string, RunningEffect<Effect>>,
-  emit: (event: MoorexEvent<State, Signal, Effect>) => void,
+  emit: (event: MoorexEventBase<State, Signal, Effect>) => void,
 ) => {
   entry.controller.complete
     .then(() => {
@@ -90,7 +99,7 @@ const startEffect = <State, Signal, Effect extends HasKey>(
   definition: MoorexDefinition<State, Signal, Effect>,
   dispatch: (signal: Signal) => void,
   running: Map<string, RunningEffect<Effect>>,
-  emit: (event: MoorexEvent<State, Signal, Effect>) => void,
+  emit: (event: MoorexEventBase<State, Signal, Effect>) => void,
 ) => {
   const token = Symbol(effect.key);
   let controller: EffectController;
@@ -118,7 +127,7 @@ const reconcileEffects = <State, Signal, Effect extends HasKey>(
   definition: MoorexDefinition<State, Signal, Effect>,
   running: Map<string, RunningEffect<Effect>>,
   dispatch: (signal: Signal) => void,
-  emit: (event: MoorexEvent<State, Signal, Effect>) => void,
+  emit: (event: MoorexEventBase<State, Signal, Effect>) => void,
 ) => {
   const desired = dedupeByKey(definition.effectsAt(state));
 
@@ -141,17 +150,33 @@ export const createMoorex = <State, Signal, Effect extends HasKey>(
   const handlers = new Set<(event: MoorexEvent<State, Signal, Effect>) => void>();
   const running = new Map<string, RunningEffect<Effect>>();
   let state = selectInitialState<State, Signal, Effect>(definition);
+  let workingState = state;
 
-  const emit = (event: MoorexEvent<State, Signal, Effect>) => {
+  const emit = (event: MoorexEventBase<State, Signal, Effect>) => {
+    const enriched: MoorexEvent<State, Signal, Effect> = {
+      ...event,
+      effectCount: running.size,
+    };
     for (const handler of [...handlers]) {
-      handler(event);
+      handler(enriched);
     }
   };
 
+  const synchronizeEffects = () => {
+    let snapshot: State;
+    do {
+      snapshot = workingState;
+      reconcileEffects(snapshot, definition, running, dispatch, emit);
+    } while (snapshot !== workingState);
+  };
+
   const dispatch = (signal: Signal) => {
-    state = definition.transition(signal)(state);
-    emit({ type: 'signal-received', signal, state });
-    reconcileEffects(state, definition, running, dispatch, emit);
+    const nextState = definition.transition(signal)(workingState);
+    workingState = nextState;
+    emit({ type: 'signal-received', signal });
+    synchronizeEffects();
+    state = workingState;
+    emit({ type: 'state-updated', state });
   };
 
   const on = (handler: (event: MoorexEvent<State, Signal, Effect>) => void) => {
@@ -159,7 +184,7 @@ export const createMoorex = <State, Signal, Effect extends HasKey>(
     return () => handlers.delete(handler);
   };
 
-  reconcileEffects(state, definition, running, dispatch, emit);
+  synchronizeEffects();
 
   return {
     dispatch,
