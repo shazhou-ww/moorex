@@ -36,7 +36,7 @@ describe('createMoorex', () => {
       runEffect: () => {
         runCount += 1;
         return {
-          complete: deferred.promise,
+          start: () => deferred.promise,
           cancel: deferred.resolve,
         };
       },
@@ -71,7 +71,7 @@ describe('createMoorex', () => {
         signal === 'toggle' ? { active: !state.active } : state,
       effectsAt: (state) => (state.active ? [{ key: 'alpha', label: 'active' }] : []),
       runEffect: () => ({
-        complete: new Promise(() => {}),
+        start: () => new Promise(() => {}),
         cancel: () => {
           cancelCalls += 1;
         },
@@ -110,12 +110,14 @@ describe('createMoorex', () => {
       },
       effectsAt: (state) =>
         state.active && state.count === 0 ? [{ key: 'alpha', label: 'incrementer' }] : [],
-      runEffect: (_effect, dispatch) => {
+      runEffect: () => {
         const deferred = createDeferred();
-        dispatch('increment');
-        queueMicrotask(deferred.resolve);
         return {
-          complete: deferred.promise,
+          start: (dispatch) => {
+            dispatch('increment');
+            queueMicrotask(deferred.resolve);
+            return deferred.promise;
+          },
           cancel: deferred.resolve,
         };
       },
@@ -129,11 +131,6 @@ describe('createMoorex', () => {
     await nextTick();
 
     expect(moorex.getState().count).toBe(1);
-    const started = events.find(
-      (event): event is Extract<typeof event, { type: 'effect-started' }> =>
-        event.type === 'effect-started',
-    );
-    expect(started?.effectCount).toBe(1);
     const signalEvent = events.find(
       (event): event is Extract<typeof event, { type: 'signal-received' }> =>
         event.type === 'signal-received' && event.signal === 'increment',
@@ -160,7 +157,7 @@ describe('createMoorex', () => {
       runEffect: () => {
         const deferred = createDeferred();
         return {
-          complete: deferred.promise,
+          start: () => deferred.promise,
           cancel: deferred.resolve,
         };
       },
@@ -196,7 +193,7 @@ describe('createMoorex', () => {
       runEffect: () => {
         runCount += 1;
         return {
-          complete: Promise.resolve(),
+          start: () => Promise.resolve(),
           cancel: () => {},
         };
       },
@@ -206,6 +203,57 @@ describe('createMoorex', () => {
     await nextTick();
 
     expect(runCount).toBe(1);
+  });
+
+  test('ignores dispatches from effects no longer tracked', async () => {
+    type State = { count: number; active: boolean };
+
+    let capturedDispatch: ((signal: NumberSignal) => void) | undefined;
+    const definition: MoorexDefinition<State, NumberSignal, NumberEffect> = {
+      initialState: { count: 0, active: true },
+      transition: (signal) => (state) => {
+        if (signal === 'increment') return { count: state.count + 1, active: state.active };
+        if (signal === 'toggle') return { count: state.count, active: !state.active };
+        return state;
+      },
+      effectsAt: (state) => (state.active ? [{ key: 'alpha', label: 'active' }] : []),
+      runEffect: () => {
+        const pending = new Promise<void>(() => {});
+        return {
+          start: (dispatch) => {
+            capturedDispatch = dispatch;
+            return pending;
+          },
+          cancel: () => {
+            const dispatchRef = capturedDispatch;
+            if (dispatchRef) {
+              queueMicrotask(() => dispatchRef('increment'));
+            }
+          },
+        };
+      },
+    };
+
+    const moorex = createMoorex(definition);
+    const events: MoorexEvent<State, NumberSignal, NumberEffect>[] = [];
+    moorex.on((event) => events.push(event));
+
+    moorex.dispatch('toggle');
+    await nextTick();
+    await nextTick();
+
+    expect(moorex.getState().count).toBe(0);
+    const incrementSignal = events.find(
+      (event): event is Extract<typeof event, { type: 'signal-received' }> =>
+        event.type === 'signal-received' && event.signal === 'increment',
+    );
+    expect(incrementSignal).toBeUndefined();
+    const stateUpdate = events.find(
+      (event): event is Extract<typeof event, { type: 'state-updated' }> =>
+        event.type === 'state-updated',
+    );
+    expect(stateUpdate?.state.active).toBe(false);
+    expect(stateUpdate?.effectCount).toBe(0);
   });
 
   test('allows unsubscribing handlers', async () => {
@@ -242,7 +290,7 @@ describe('createMoorex', () => {
         signal === 'toggle' ? { active: !state.active } : state,
       effectsAt: (state) => (state.active ? [{ key: 'alpha', label: 'active' }] : []),
       runEffect: () => ({
-        complete: new Promise(() => {}),
+        start: () => new Promise(() => {}),
         cancel: () => {
           throw error;
         },
@@ -305,7 +353,7 @@ describe('createMoorex', () => {
       transition: () => (state) => state,
       effectsAt: () => [{ key: 'alpha', label: 'active' }],
       runEffect: () => ({
-        complete: deferred.promise,
+        start: () => deferred.promise,
         cancel: () => {},
       }),
     };

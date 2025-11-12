@@ -1,9 +1,43 @@
+type SignalQueue<Signal> = {
+  schedule(signal: Signal): void;
+};
+
+const createSignalQueue = <Signal>(
+  processBatch: (signals: Signal[]) => void,
+): SignalQueue<Signal> => {
+  const queue: Signal[] = [];
+  let draining = false;
+
+  const drain = () => {
+    if (draining) return;
+    draining = true;
+    queueMicrotask(() => {
+      if (queue.length === 0) {
+        draining = false;
+        return;
+      }
+
+      const batch = queue.splice(0, queue.length);
+      processBatch(batch);
+
+      draining = false;
+      if (queue.length > 0) drain();
+    });
+  };
+
+  const schedule = (signal: Signal) => {
+    queue.push(signal);
+    drain();
+  };
+
+  return { schedule };
+};
 type HasKey = { key: string };
 
 type CancelFn = () => void;
 
-type EffectController = {
-  complete: Promise<void>;
+type EffectInitializer<Signal> = {
+  start: (dispatch: (signal: Signal) => void) => Promise<void>;
   cancel: CancelFn;
 };
 
@@ -13,8 +47,7 @@ export type MoorexDefinition<State, Signal, Effect extends HasKey> = {
   effectsAt: (state: State) => Effect[];
   runEffect: (
     effect: Effect,
-    dispatch: (signal: Signal) => void,
-  ) => EffectController;
+  ) => EffectInitializer<Signal>;
 };
 
 type MoorexEventBase<State, Signal, Effect extends HasKey> =
@@ -42,8 +75,8 @@ export type Moorex<State, Signal, Effect extends HasKey> = {
 type RunningEffect<Effect extends HasKey> = {
   key: string;
   effect: Effect;
-  controller: EffectController;
-  token: symbol;
+  complete: Promise<void>;
+  cancel: CancelFn;
 };
 
 const selectInitialState = <State, Signal, Effect extends HasKey>(
@@ -61,14 +94,14 @@ const dedupeByKey = <Effect extends HasKey>(effects: Effect[]): Map<string, Effe
 const isCurrentEffect = <Effect extends HasKey>(
   running: Map<string, RunningEffect<Effect>>,
   entry: RunningEffect<Effect>,
-): boolean => running.get(entry.key)?.token === entry.token;
+): boolean => running.get(entry.key) === entry;
 
 const cancelRunningEffect = <State, Signal, Effect extends HasKey>(
   entry: RunningEffect<Effect>,
   emit: (event: MoorexEventBase<State, Signal, Effect>) => void,
 ) => {
   try {
-    entry.controller.cancel();
+    entry.cancel();
   } catch (error) {
     emit({ type: 'effect-failed', effect: entry.effect, error });
     return;
@@ -81,7 +114,7 @@ const attachCompletionHandlers = <State, Signal, Effect extends HasKey>(
   running: Map<string, RunningEffect<Effect>>,
   emit: (event: MoorexEventBase<State, Signal, Effect>) => void,
 ) => {
-  entry.controller.complete
+  entry.complete
     .then(() => {
       if (!isCurrentEffect(running, entry)) return;
       running.delete(entry.key);
@@ -97,14 +130,13 @@ const attachCompletionHandlers = <State, Signal, Effect extends HasKey>(
 const startEffect = <State, Signal, Effect extends HasKey>(
   effect: Effect,
   definition: MoorexDefinition<State, Signal, Effect>,
-  dispatch: (signal: Signal) => void,
+  scheduleSignal: (signal: Signal) => void,
   running: Map<string, RunningEffect<Effect>>,
   emit: (event: MoorexEventBase<State, Signal, Effect>) => void,
 ) => {
-  const token = Symbol(effect.key);
-  let controller: EffectController;
+  let initializer: EffectInitializer<Signal>;
   try {
-    controller = definition.runEffect(effect, dispatch);
+    initializer = definition.runEffect(effect);
   } catch (error) {
     emit({ type: 'effect-failed', effect, error });
     return;
@@ -113,11 +145,27 @@ const startEffect = <State, Signal, Effect extends HasKey>(
   const entry: RunningEffect<Effect> = {
     key: effect.key,
     effect,
-    controller,
-    token,
+    complete: Promise.resolve(),
+    cancel: initializer.cancel,
+  };
+  running.set(effect.key, entry);
+
+  const guardedDispatch = (signal: Signal) => {
+    if (running.get(effect.key) !== entry) return;
+    scheduleSignal(signal);
   };
 
-  running.set(effect.key, entry);
+  let completion: Promise<void>;
+  try {
+    completion = Promise.resolve(initializer.start(guardedDispatch));
+  } catch (error) {
+    running.delete(effect.key);
+    emit({ type: 'effect-failed', effect, error });
+    return;
+  }
+
+  entry.complete = completion;
+
   emit({ type: 'effect-started', effect });
   attachCompletionHandlers(entry, running, emit);
 };
@@ -126,7 +174,7 @@ const reconcileEffects = <State, Signal, Effect extends HasKey>(
   state: State,
   definition: MoorexDefinition<State, Signal, Effect>,
   running: Map<string, RunningEffect<Effect>>,
-  dispatch: (signal: Signal) => void,
+  scheduleSignal: (signal: Signal) => void,
   emit: (event: MoorexEventBase<State, Signal, Effect>) => void,
 ) => {
   const desired = dedupeByKey(definition.effectsAt(state));
@@ -140,7 +188,7 @@ const reconcileEffects = <State, Signal, Effect extends HasKey>(
 
   for (const [key, effect] of desired) {
     if (running.has(key)) continue;
-    startEffect(effect, definition, dispatch, running, emit);
+    startEffect(effect, definition, scheduleSignal, running, emit);
   }
 };
 
@@ -162,21 +210,27 @@ export const createMoorex = <State, Signal, Effect extends HasKey>(
     }
   };
 
+  const { schedule: scheduleSignal } = createSignalQueue<Signal>((signals) => {
+    workingState = signals.reduce((current, signal) => {
+      emit({ type: 'signal-received', signal });
+      return definition.transition(signal)(current);
+    }, workingState);
+
+    synchronizeEffects();
+    state = workingState;
+    emit({ type: 'state-updated', state });
+  });
+
   const synchronizeEffects = () => {
     let snapshot: State;
     do {
       snapshot = workingState;
-      reconcileEffects(snapshot, definition, running, dispatch, emit);
+      reconcileEffects(snapshot, definition, running, scheduleSignal, emit);
     } while (snapshot !== workingState);
   };
 
   const dispatch = (signal: Signal) => {
-    const nextState = definition.transition(signal)(workingState);
-    workingState = nextState;
-    emit({ type: 'signal-received', signal });
-    synchronizeEffects();
-    state = workingState;
-    emit({ type: 'state-updated', state });
+    scheduleSignal(signal);
   };
 
   const on = (handler: (event: MoorexEvent<State, Signal, Effect>) => void) => {
