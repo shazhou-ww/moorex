@@ -26,19 +26,10 @@ jobs:
         run: bun test --coverage
 
       - name: Upload coverage to Codecov
-        if: always() && secrets.CODECOV_TOKEN != ''
+        if: always()
         uses: codecov/codecov-action@v4
         continue-on-error: true
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
           verbose: true
-
-      - name: Skip Codecov upload (no token)
-        if: always() && secrets.CODECOV_TOKEN == ''
-        run: |
-          echo "⚠️ CODECOV_TOKEN not configured. Skipping coverage upload."
-          echo "To enable Codecov:"
-          echo "  1. Go to https://codecov.io and connect your repository"
-          echo "  2. Copy the upload token"
-          echo "  3. Add it as CODECOV_TOKEN secret in GitHub repository settings"
