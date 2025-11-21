@@ -40,8 +40,9 @@
     "typescript": "^5"
   },
   "scripts": {
-    "test": "vitest --ui",
-    "test:coverage": "vitest --coverage --ui",
+    "test": "vitest --run --no-ui",
+    "test:coverage": "vitest --run --coverage --no-ui",
+    "test:ui": "vitest --ui",
     "test:ci": "vitest --run --coverage --no-ui"
   }
 }
