@@ -44,15 +44,17 @@ export type MoorexDefinition<State, Signal, Effect> = {
   effectsAt: (state: Immutable<State>) => Record<string, Immutable<Effect>>;
   /**
    * 运行一个 effect。
-   * 接收 Immutable effect 和 Immutable state，返回一个初始化器，包含 `start` 和 `cancel` 方法。
+   * 接收 Immutable effect、Immutable state 和 effect 的 key，返回一个初始化器，包含 `start` 和 `cancel` 方法。
    * 参数都是 Immutable 的，不允许修改。
    *
    * @param effect - 要运行的 effect（Immutable）
    * @param state - 生成该 effect 时的状态（Immutable）
+   * @param key - effect 的 key，用于标识该 effect
    */
   runEffect: (
     effect: Immutable<Effect>,
     state: Immutable<State>,
+    key: string,
   ) => EffectInitializer<Signal>;
 };
 

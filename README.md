@@ -40,7 +40,7 @@ const definition: MoorexDefinition<YourState, YourSignal, YourEffect> = {
   initiate: () => ({ /* initial state */ }),
   transition: (signal) => (state) => create(state, (draft) => { /* update draft */ }),
   effectsAt: (state) => ({ /* return effects record */ }),
-  runEffect: (effect, state) => ({ start: async () => {}, cancel: () => {} }),
+  runEffect: (effect, state, key) => ({ start: async () => {}, cancel: () => {} }),
 };
 
 // Create and use the machine
@@ -82,9 +82,9 @@ section below for details.
    the current state. The Record keys serve as stable effect identifiers for
    reconciliation.
 
-4. **`runEffect(effect: Immutable<Effect>, state: Immutable<State>): EffectInitializer<Signal>`**:
+4. **`runEffect(effect: Immutable<Effect>, state: Immutable<State>, key: string): EffectInitializer<Signal>`**:
    Creates an initializer with `start` and `cancel` methods to execute and abort
-   each effect. Receives both the effect and the state that generated it.
+   each effect. Receives the effect, the state that generated it, and the effect's key.
 
 These four functions form a `MoorexDefinition<State, Signal, Effect>`, which you
 pass to `createMoorex()` to instantiate the machine.
@@ -144,9 +144,9 @@ section below for details.
    the current state. The Record keys serve as stable effect identifiers for
    reconciliation.
 
-4. **`runEffect(effect: Immutable<Effect>, state: Immutable<State>): EffectInitializer<Signal>`**:
+4. **`runEffect(effect: Immutable<Effect>, state: Immutable<State>, key: string): EffectInitializer<Signal>`**:
    Creates an initializer with `start` and `cancel` methods to execute and abort
-   each effect. Receives both the effect and the state that generated it.
+   each effect. Receives the effect, the state that generated it, and the effect's key.
 
 These four functions form a `MoorexDefinition<State, Signal, Effect>`, which you
 pass to `createMoorex()` to instantiate the machine.
@@ -173,8 +173,8 @@ All function parameters and return values in `MoorexDefinition` are immutable:
   returns `Immutable<State>`
 - `effectsAt(state)` receives `Immutable<State>`, returns
   `Record<string, Immutable<Effect>>`
-- `runEffect(effect, state)` receives `Immutable<Effect>` and
-  `Immutable<State>`
+- `runEffect(effect, state, key)` receives `Immutable<Effect>`,
+  `Immutable<State>`, and `string` (key)
 
 We strongly recommend using mutative's `create()` function for immutable updates:
 
@@ -268,10 +268,10 @@ const definition: MoorexDefinition<AgentState, Signal, Effect> = {
     return {};
   },
 
-  // Effect runner: (effect, state) => { start, cancel }
+  // Effect runner: (effect, state, key) => { start, cancel }
   // Creates an initializer for running a specific effect.
-  // Note: receives both effect and the state that generated this effect.
-  runEffect: (effect, state) => {
+  // Note: receives effect, the state that generated this effect, and the effect's key.
+  runEffect: (effect, state, key) => {
     if (effect.kind === 'call-llm') {
       return {
         // Async function that runs the effect and dispatches signals on
@@ -342,9 +342,9 @@ On every state change Moorex:
 The Record's keys serve as effect identifiers for reconciliation, so Effect
 types no longer need to have a `key` property.
 
-Each effect's lifecycle is managed by the `runEffect(effect, state)` return value:
+Each effect's lifecycle is managed by the `runEffect(effect, state, key)` return value:
 
-- `runEffect(effect, state)` receives the effect and the state that generated
+- `runEffect(effect, state, key)` receives the effect, the state that generated it, and the effect's key
   it, returning an initializer with `start` and `cancel` methods.
 - `start(dispatch)` launches the effect and resolves when it finishes. Use
   `dispatch` to send signals back to the machine.

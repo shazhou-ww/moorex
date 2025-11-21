@@ -33,7 +33,7 @@ describe('createMoorex', () => {
       initiate: () => ({ active: true }),
       transition: () => (state) => state,
       effectsAt: () => ({ alpha: { key: 'alpha', label: 'initial' } }),
-      runEffect: (effect, state) => {
+      runEffect: (effect, state, key) => {
         runCount += 1;
         return {
           start: () => deferred.promise,
@@ -69,7 +69,7 @@ describe('createMoorex', () => {
       transition: (signal) => (state) =>
         signal === 'toggle' ? { active: !state.active } : state,
       effectsAt: (state): Record<string, NumberEffect> => (state.active ? { alpha: { key: 'alpha', label: 'active' } } : {}),
-      runEffect: (effect, state) => ({
+      runEffect: (effect, state, key) => ({
         start: () => new Promise(() => {}),
         cancel: () => {
           cancelCalls += 1;
@@ -107,7 +107,7 @@ describe('createMoorex', () => {
       },
       effectsAt: (state): Record<string, NumberEffect> =>
         state.active && state.count === 0 ? { alpha: { key: 'alpha', label: 'incrementer' } } : {},
-      runEffect: (effect, state) => {
+      runEffect: (effect, state, key) => {
         const deferred = createDeferred();
         return {
           start: (dispatch) => {
@@ -149,7 +149,7 @@ describe('createMoorex', () => {
       transition: (signal) => (state) =>
         signal === 'toggle' ? { active: !state.active } : state,
       effectsAt: (state): Record<string, NumberEffect> => (state.active ? { alpha: { key: 'alpha', label: 'active' } } : {}),
-      runEffect: (effect, state) => {
+      runEffect: (effect, state, key) => {
         const deferred = createDeferred();
         return {
           start: () => deferred.promise,
@@ -183,7 +183,7 @@ describe('createMoorex', () => {
       effectsAt: () => ({
         alpha: { key: 'alpha', label: 'first' },
       }),
-      runEffect: (effect, state) => {
+      runEffect: (effect, state, key) => {
         runCount += 1;
         return {
           start: () => Promise.resolve(),
@@ -210,7 +210,7 @@ describe('createMoorex', () => {
         return state;
       },
       effectsAt: (state): Record<string, NumberEffect> => (state.active ? { alpha: { key: 'alpha', label: 'active' } } : {}),
-      runEffect: (effect, state) => {
+      runEffect: (effect, state, key) => {
         const pending = new Promise<void>(() => {});
         return {
           start: (dispatch) => {
@@ -256,7 +256,7 @@ describe('createMoorex', () => {
       transition: (signal) => (state) =>
         signal === 'increment' ? { count: state.count + 1 } : state,
       effectsAt: () => ({}),
-      runEffect: (effect, state) => {
+      runEffect: (effect, state, key) => {
         throw new Error('should not run');
       },
     };
@@ -281,7 +281,7 @@ describe('createMoorex', () => {
       transition: (signal) => (state) =>
         signal === 'toggle' ? { active: !state.active } : state,
       effectsAt: (state): Record<string, NumberEffect> => (state.active ? { alpha: { key: 'alpha', label: 'active' } } : {}),
-      runEffect: (effect, state) => ({
+      runEffect: (effect, state, key) => ({
         start: () => new Promise(() => {}),
         cancel: () => {
           throw error;
@@ -313,7 +313,7 @@ describe('createMoorex', () => {
       transition: (signal) => (state) =>
         signal === 'toggle' ? { shouldRun: !state.shouldRun } : state,
       effectsAt: (state): Record<string, NumberEffect> => (state.shouldRun ? { alpha: { key: 'alpha', label: 'boom' } } : {}),
-      runEffect: (effect, state) => {
+      runEffect: (effect, state, key) => {
         throw error;
       },
     };
@@ -345,7 +345,7 @@ describe('createMoorex', () => {
       initiate: () => ({ active: true }),
       transition: () => (state) => state,
       effectsAt: (): Record<string, NumberEffect> => ({ alpha: { key: 'alpha', label: 'active' } }),
-      runEffect: (effect, state) => ({
+      runEffect: (effect, state, key) => ({
         start: () => deferred.promise,
         cancel: () => {},
       }),
@@ -388,7 +388,7 @@ describe('createMoorex', () => {
         }
         return {};
       },
-      runEffect: (effect, state) => {
+      runEffect: (effect, state, key) => {
         runEffects.push(effect.key);
         return {
           start: () => Promise.resolve(),
@@ -413,7 +413,7 @@ describe('createMoorex', () => {
       transition: (signal) => (state) =>
         signal === 'increment' ? { count: state.count + 1 } : state,
       effectsAt: () => ({}),
-      runEffect: () => {
+      runEffect: (effect, state, key) => {
         throw new Error('should not run');
       },
     };
@@ -445,7 +445,7 @@ describe('createMoorex', () => {
         }
         return {};
       },
-      runEffect: (effect, state) => ({
+      runEffect: (effect, state, key) => ({
         start: () => new Promise(() => {}),
         cancel: () => {
           cancelCalls += 1;
@@ -478,7 +478,7 @@ describe('createMoorex', () => {
       effectsAt: (): Record<string, NumberEffect> => ({
         alpha: { key: 'alpha', label: 'test' },
       }),
-      runEffect: (effect, state) => {
+      runEffect: (effect, state, key) => {
         runCount += 1;
         return {
           start: () => new Promise(() => {}), // 永不完成的 promise

@@ -31,7 +31,7 @@ const definition: MoorexDefinition<AgentState, AgentSignal, AgentEffect> = {
   initiate: () => initialState,
   transition: (signal) => (state) => reduceState(state, signal),
   effectsAt: (state) => decideEffects(state),
-  runEffect: (effect, state) => buildEffectRunner(effect, state),
+  runEffect: (effect, state, key) => buildEffectRunner(effect, state, key),
 };
 ```
 
@@ -57,7 +57,7 @@ type MoorexDefinition<State, Signal, Effect> = {
   initiate: () => Immutable<State>;
   transition: (signal: Immutable<Signal>) => (state: Immutable<State>) => Immutable<State>;
   effectsAt: (state: Immutable<State>) => Record<string, Immutable<Effect>>;
-  runEffect: (effect: Immutable<Effect>, state: Immutable<State>) => EffectInitializer<Signal>;
+  runEffect: (effect: Immutable<Effect>, state: Immutable<State>, key: string) => EffectInitializer<Signal>;
 };
 
 // Machine instance
@@ -99,7 +99,7 @@ mutative's `create()` for immutable updates:
 - `effectsAt(state)`: returns a Record of effects implied by the state (keys
   serve as effect identifiers). `state` is immutable; return immutable effect
   objects.
-- `runEffect(effect, state)`: returns `{ start, cancel }` to execute and abort
-  each effect; receives both the effect and the state that generated it. Both
-  parameters are immutable.
+- `runEffect(effect, state, key)`: returns `{ start, cancel }` to execute and abort
+  each effect; receives the effect, the state that generated it, and the effect's key. All
+  parameters are immutable (except key which is a string).
 

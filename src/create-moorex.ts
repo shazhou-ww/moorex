@@ -28,7 +28,7 @@ import type {
  *   initiate: () => ({ count: 0 }),
  *   transition: (signal) => (state) => ({ ...state, count: state.count + 1 }),
  *   effectsAt: (state) => state.count > 0 ? { 'effect-1': effectData } : {},
- *   runEffect: (effect, state) => ({
+ *   runEffect: (effect, state, key) => ({
  *     start: async (dispatch) => { },
  *     cancel: () => { }
  *   })
@@ -56,7 +56,7 @@ export const createMoorex = <State, Signal, Effect>(
   let schedule: (signal: Immutable<Signal>) => void;
 
   const startEffect = (key: string, effect: Immutable<Effect>, state: Immutable<State>) => {
-    const initializer = withEffectErrorHandling(effect, emit, () => definition.runEffect(effect, state));
+    const initializer = withEffectErrorHandling(effect, emit, () => definition.runEffect(effect, state, key));
     if (!initializer) return;
 
     const entry: RunningEffect<Effect> = {

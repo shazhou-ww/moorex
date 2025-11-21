@@ -36,7 +36,7 @@ const definition: MoorexDefinition<YourState, YourSignal, YourEffect> = {
   initiate: () => ({ /* initial state */ }),
   transition: (signal) => (state) => create(state, (draft) => { /* update draft */ }),
   effectsAt: (state) => ({ /* return effects record */ }),
-  runEffect: (effect, state) => ({ start: async () => {}, cancel: () => {} }),
+  runEffect: (effect, state, key) => ({ start: async () => {}, cancel: () => {} }),
 };
 
 // 创建并使用自动机
@@ -69,8 +69,8 @@ machine.dispatch({ /* your signal */ });
 3. **`effectsAt(state: Immutable<State>): Record<string, Immutable<Effect>>`**:
    基于当前状态返回应该运行的副作用的 Record（键值映射）。Record 的键用作稳定的副作用标识符以进行协调。
 
-4. **`runEffect(effect: Immutable<Effect>, state: Immutable<State>): EffectInitializer<Signal>`**:
-   创建一个初始化器，包含 `start` 和 `cancel` 方法，用于执行和取消每个副作用。同时接收副作用和生成该副作用的状态。
+4. **`runEffect(effect: Immutable<Effect>, state: Immutable<State>, key: string): EffectInitializer<Signal>`**:
+   创建一个初始化器，包含 `start` 和 `cancel` 方法，用于执行和取消每个副作用。接收副作用、生成该副作用的状态以及副作用的 key。
 
 这四个函数组成一个 `MoorexDefinition<State, Signal, Effect>`，你将其传递给 `createMoorex()` 以实例化自动机。
 
@@ -113,8 +113,8 @@ AI 智能体经常在调用大语言模型（LLM）的同时与用户和工具�
 3. **`effectsAt(state: Immutable<State>): Record<string, Immutable<Effect>>`**:
    基于当前状态返回应该运行的副作用的 Record（键值映射）。Record 的键用作稳定的副作用标识符以进行协调。
 
-4. **`runEffect(effect: Immutable<Effect>, state: Immutable<State>): EffectInitializer<Signal>`**:
-   创建一个初始化器，包含 `start` 和 `cancel` 方法，用于执行和取消每个副作用。同时接收副作用和生成该副作用的状态。
+4. **`runEffect(effect: Immutable<Effect>, state: Immutable<State>, key: string): EffectInitializer<Signal>`**:
+   创建一个初始化器，包含 `start` 和 `cancel` 方法，用于执行和取消每个副作用。接收副作用、生成该副作用的状态以及副作用的 key。
 
 这四个函数组成一个 `MoorexDefinition<State, Signal, Effect>`，你将其传递给 `createMoorex()` 以实例化自动机。
 
@@ -134,7 +134,7 @@ Moorex 要求 `transition`、`effectsAt` 和 `runEffect` 必须是**纯函数**�
 - `initiate()` 返回 `Immutable<State>`
 - `transition(signal)` 接收 `Immutable<Signal>` 和 `Immutable<State>`，返回 `Immutable<State>`
 - `effectsAt(state)` 接收 `Immutable<State>`，返回 `Record<string, Immutable<Effect>>`
-- `runEffect(effect, state)` 接收 `Immutable<Effect>` 和 `Immutable<State>`
+- `runEffect(effect, state, key)` 接收 `Immutable<Effect>`、`Immutable<State>` 和 `string`（key）
 
 我们强烈建议使用 mutative 的 `create()` 函数进行不可变更新：
 
@@ -221,10 +221,10 @@ const definition: MoorexDefinition<AgentState, Signal, Effect> = {
     return {};
   },
 
-  // 副作用运行器: (effect, state) => { start, cancel }
+  // 副作用运行器: (effect, state, key) => { start, cancel }
   // 创建用于运行特定副作用的初始化器。
-  // 注意：同时接收副作用和生成该副作用的状态。
-  runEffect: (effect, state) => {
+  // 注意：接收副作用、生成该副作用的状态以及副作用的 key。
+  runEffect: (effect, state, key) => {
     if (effect.kind === 'call-llm') {
       return {
         // 运行副作用并在完成时派发信号的异步函数
