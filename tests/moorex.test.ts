@@ -30,7 +30,7 @@ describe('createMoorex', () => {
     let runCount = 0;
 
     const definition: MoorexDefinition<State, NumberSignal, NumberEffect> = {
-      initialState: { active: true },
+      initiate: () => ({ active: true }),
       transition: () => (state) => state,
       effectsAt: () => ({ alpha: { key: 'alpha', label: 'initial' } }),
       runEffect: (effect, state) => {
@@ -58,7 +58,6 @@ describe('createMoorex', () => {
     );
 
     expect(completion?.effect.key).toBe('alpha');
-    expect(completion?.effectCount).toBe(0);
   });
 
   test('cancels effects that are no longer requested', async () => {
@@ -66,7 +65,7 @@ describe('createMoorex', () => {
 
     let cancelCalls = 0;
     const definition: MoorexDefinition<State, NumberSignal, NumberEffect> = {
-      initialState: { active: true },
+      initiate: () => ({ active: true }),
       transition: (signal) => (state) =>
         signal === 'toggle' ? { active: !state.active } : state,
       effectsAt: (state): Record<string, NumberEffect> => (state.active ? { alpha: { key: 'alpha', label: 'active' } } : {}),
@@ -88,13 +87,11 @@ describe('createMoorex', () => {
     expect(cancelCalls).toBe(1);
     const cancelEvent = events.find((event) => event.type === 'effect-canceled');
     expect(cancelEvent?.effect.key).toBe('alpha');
-    expect(cancelEvent?.effectCount).toBe(0);
 
     const stateUpdated = events.find(
       (event): event is Extract<typeof event, { type: 'state-updated' }> =>
         event.type === 'state-updated',
     );
-    expect(stateUpdated?.effectCount).toBe(0);
     expect(stateUpdated?.state.active).toBe(false);
   });
 
@@ -102,7 +99,7 @@ describe('createMoorex', () => {
     type State = { count: number; active: boolean };
 
     const definition: MoorexDefinition<State, NumberSignal, NumberEffect> = {
-      initialState: { count: 0, active: false },
+      initiate: () => ({ count: 0, active: false }),
       transition: (signal) => (state) => {
         if (signal === 'increment') return { count: state.count + 1, active: state.active };
         if (signal === 'toggle') return { count: state.count, active: !state.active };
@@ -136,21 +133,19 @@ describe('createMoorex', () => {
         event.type === 'signal-received' && event.signal === 'increment',
     );
     expect(signalEvent?.signal).toBe('increment');
-    expect(signalEvent?.effectCount).toBeGreaterThanOrEqual(0);
 
     const stateUpdates = events.filter(
       (event): event is Extract<typeof event, { type: 'state-updated' }> =>
         event.type === 'state-updated',
     );
     expect(stateUpdates.at(-1)?.state.count).toBe(1);
-    expect(stateUpdates.at(-1)?.effectCount).toBe(0);
   });
 
   test('ignores completion from cancelled effects', async () => {
     type State = { active: boolean };
 
     const definition: MoorexDefinition<State, NumberSignal, NumberEffect> = {
-      initialState: { active: true },
+      initiate: () => ({ active: true }),
       transition: (signal) => (state) =>
         signal === 'toggle' ? { active: !state.active } : state,
       effectsAt: (state): Record<string, NumberEffect> => (state.active ? { alpha: { key: 'alpha', label: 'active' } } : {}),
@@ -176,7 +171,6 @@ describe('createMoorex', () => {
 
     const canceled = events.find((event) => event.type === 'effect-canceled');
     expect(canceled?.effect.key).toBe('alpha');
-    expect(canceled?.effectCount).toBe(0);
   });
 
   test('dedupes effects sharing the same key', async () => {
@@ -184,7 +178,7 @@ describe('createMoorex', () => {
 
     let runCount = 0;
     const definition: MoorexDefinition<State, NumberSignal, NumberEffect> = {
-      initialState: { stage: 'duplicate' },
+      initiate: () => ({ stage: 'duplicate' }),
       transition: () => (state) => state,
       effectsAt: () => ({
         alpha: { key: 'alpha', label: 'first' },
@@ -209,7 +203,7 @@ describe('createMoorex', () => {
 
     let capturedDispatch: ((signal: NumberSignal) => void) | undefined;
     const definition: MoorexDefinition<State, NumberSignal, NumberEffect> = {
-      initialState: { count: 0, active: true },
+      initiate: () => ({ count: 0, active: true }),
       transition: (signal) => (state) => {
         if (signal === 'increment') return { count: state.count + 1, active: state.active };
         if (signal === 'toggle') return { count: state.count, active: !state.active };
@@ -252,14 +246,13 @@ describe('createMoorex', () => {
         event.type === 'state-updated',
     );
     expect(stateUpdate?.state.active).toBe(false);
-    expect(stateUpdate?.effectCount).toBe(0);
   });
 
   test('allows unsubscribing handlers', async () => {
     type State = { count: number };
 
     const definition: MoorexDefinition<State, NumberSignal, NumberEffect> = {
-      initialState: { count: 0 },
+      initiate: () => ({ count: 0 }),
       transition: (signal) => (state) =>
         signal === 'increment' ? { count: state.count + 1 } : state,
       effectsAt: () => ({}),
@@ -284,7 +277,7 @@ describe('createMoorex', () => {
 
     const error = new Error('cancel failed');
     const definition: MoorexDefinition<State, NumberSignal, NumberEffect> = {
-      initialState: { active: true },
+      initiate: () => ({ active: true }),
       transition: (signal) => (state) =>
         signal === 'toggle' ? { active: !state.active } : state,
       effectsAt: (state): Record<string, NumberEffect> => (state.active ? { alpha: { key: 'alpha', label: 'active' } } : {}),
@@ -309,7 +302,6 @@ describe('createMoorex', () => {
     );
     expect(failed?.effect.key).toBe('alpha');
     expect(failed?.error).toBe(error);
-    expect(failed?.effectCount).toBe(0);
   });
 
   test('emits effect-failed when runEffect throws', async () => {
@@ -317,7 +309,7 @@ describe('createMoorex', () => {
 
     const error = new Error('boom');
     const definition: MoorexDefinition<State, NumberSignal, NumberEffect> = {
-      initialState: { shouldRun: false },
+      initiate: () => ({ shouldRun: false }),
       transition: (signal) => (state) =>
         signal === 'toggle' ? { shouldRun: !state.shouldRun } : state,
       effectsAt: (state): Record<string, NumberEffect> => (state.shouldRun ? { alpha: { key: 'alpha', label: 'boom' } } : {}),
@@ -339,7 +331,6 @@ describe('createMoorex', () => {
     );
     expect(failed?.effect.key).toBe('alpha');
     expect(failed?.error).toBe(error);
-    expect(failed?.effectCount).toBe(0);
   });
 
   test('emits effect-failed when completion rejects', async () => {
@@ -348,7 +339,7 @@ describe('createMoorex', () => {
     const deferred = createDeferred();
     const error = new Error('reject');
     const definition: MoorexDefinition<State, NumberSignal, NumberEffect> = {
-      initialState: { active: true },
+      initiate: () => ({ active: true }),
       transition: () => (state) => state,
       effectsAt: (): Record<string, NumberEffect> => ({ alpha: { key: 'alpha', label: 'active' } }),
       runEffect: (effect, state) => ({
@@ -375,7 +366,6 @@ describe('createMoorex', () => {
     );
     expect(failed?.effect.key).toBe('alpha');
     expect(failed?.error).toBe(error);
-    expect(failed?.effectCount).toBe(0);
   });
 });
 

@@ -4,8 +4,8 @@ import { createEventEmitter } from './event-emitter';
 import { guardCurrentEffect, withEffectErrorHandling, attachCompletionHandlers } from './utils';
 import type {
   MoorexDefinition,
-  MoorexEventBase,
   Moorex,
+  MoorexEvent,
   RunningEffect,
 } from './types';
 
@@ -25,7 +25,7 @@ import type {
  * @example
  * ```typescript
  * const definition: MoorexDefinition<State, Signal, Effect> = {
- *   initialState: { count: 0 },
+ *   initiate: () => ({ count: 0 }),
  *   transition: (signal) => (state) => ({ ...state, count: state.count + 1 }),
  *   effectsAt: (state) => state.count > 0 ? { 'effect-1': effectData } : {},
  *   runEffect: (effect, state) => ({
@@ -49,9 +49,9 @@ export const createMoorex = <State, Signal, Effect>(
   definition: MoorexDefinition<State, Signal, Effect>,
 ): Moorex<State, Signal, Effect> => {
   const running = new Map<string, RunningEffect<Effect>>();
-  let state: Immutable<State> = definition.initialState;
+  let state: Immutable<State> = definition.initiate();
 
-  const { emit, on } = createEventEmitter<State, Signal, Effect>(() => running.size);
+  const { emit, on } = createEventEmitter<MoorexEvent<State, Signal, Effect>>();
 
   let schedule: (signal: Immutable<Signal>) => void;
 

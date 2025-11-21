@@ -27,8 +27,8 @@ export type EffectInitializer<Signal> = {
  * @template Effect - Effect 类型
  */
 export type MoorexDefinition<State, Signal, Effect> = {
-  /** 初始状态 */
-  initialState: Immutable<State>;
+  /** 初始化函数，返回初始状态 */
+  initiate: () => Immutable<State>;
   /**
    * 状态转换函数。
    * 接收一个 Immutable 信号，返回一个函数，该函数接收 Immutable 状态并返回新的 Immutable 状态。
@@ -57,20 +57,7 @@ export type MoorexDefinition<State, Signal, Effect> = {
 };
 
 /**
- * Moorex 事件基础类型
- */
-export type MoorexEventBase<State, Signal, Effect> =
-  | { type: 'signal-received'; signal: Immutable<Signal> }
-  | { type: 'state-updated'; state: Immutable<State> }
-  | { type: 'effect-started'; effect: Immutable<Effect> }
-  | { type: 'effect-completed'; effect: Immutable<Effect> }
-  | { type: 'effect-canceled'; effect: Immutable<Effect> }
-  | { type: 'effect-failed'; effect: Immutable<Effect>; error: unknown };
-
-/**
  * Moorex 机器发出的事件。
- *
- * 所有事件都包含 `effectCount` 字段，表示事件处理时仍在运行的 effects 数量。
  *
  * 事件类型包括：
  * - `signal-received`: 信号被接收并处理
@@ -84,14 +71,13 @@ export type MoorexEventBase<State, Signal, Effect> =
  * @template Signal - 信号类型
  * @template Effect - Effect 类型
  */
-export type MoorexEvent<State, Signal, Effect> = MoorexEventBase<
-  State,
-  Signal,
-  Effect
-> & {
-  /** 当前仍在运行的 effects 数量 */
-  effectCount: number;
-};
+export type MoorexEvent<State, Signal, Effect> =
+  | { type: 'signal-received'; signal: Immutable<Signal> }
+  | { type: 'state-updated'; state: Immutable<State> }
+  | { type: 'effect-started'; effect: Immutable<Effect> }
+  | { type: 'effect-completed'; effect: Immutable<Effect> }
+  | { type: 'effect-canceled'; effect: Immutable<Effect> }
+  | { type: 'effect-failed'; effect: Immutable<Effect>; error: unknown };
 
 /**
  * Moorex 机器实例。

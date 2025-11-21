@@ -30,16 +30,82 @@ state, and removing state automatically cancels redundant effects.
 
 ## Getting Started
 
-Install dependencies:
+Install Moorex and its peer dependency:
 
 ```bash
-bun install
+npm install moorex mutative
+# or
+bun add moorex mutative
+# or
+yarn add moorex mutative
 ```
 
-Run tests:
+Import and create your first Moorex machine:
 
-```bash
-bun test --coverage
+```typescript
+import { createMoorex, type MoorexDefinition } from 'moorex';
+import { create } from 'mutative';
+
+// Define your types and create the definition
+// (See Example section below for full details)
+const definition: MoorexDefinition<YourState, YourSignal, YourEffect> = {
+  initiate: () => ({ /* initial state */ }),
+  transition: (signal) => (state) => create(state, (draft) => { /* update draft */ }),
+  effectsAt: (state) => ({ /* return effects record */ }),
+  runEffect: (effect, state) => ({ start: async () => {}, cancel: () => {} }),
+};
+
+// Create and use the machine
+const machine = createMoorex(definition);
+machine.on((event) => console.log(event));
+machine.dispatch({ /* your signal */ });
+```
+
+## Immutability
+
+All data types in Moorex (State, Signal, Effect) are **read-only/immutable**
+using the `Immutable` type from
+[mutative](https://github.com/unadlib/mutative).
+
+Moorex requires `transition`, `effectsAt`, and `runEffect` to be **pure
+functions** — they must not modify their inputs. Immutability protects against
+accidental mutations that would violate this constraint and lead to bugs. All
+state, signal, and effect objects are protected from modification, ensuring:
+
+- **Purity guarantee**: Functions cannot accidentally mutate inputs
+- **Correctness**: State transitions remain predictable and reproducible
+- **Debuggability**: Eliminates entire classes of mutation-related bugs
+
+All function parameters and return values in `MoorexDefinition` are immutable:
+
+- `initiate()` returns `Immutable<State>`
+- `transition(signal)` receives `Immutable<Signal>` and `Immutable<State>`,
+  returns `Immutable<State>`
+- `effectsAt(state)` receives `Immutable<State>`, returns
+  `Record<string, Immutable<Effect>>`
+- `runEffect(effect, state)` receives `Immutable<Effect>` and
+  `Immutable<State>`
+
+We strongly recommend using mutative's `create()` function for immutable updates:
+
+```typescript
+import { create } from 'mutative';
+
+// In your transition function
+transition: (signal) => (state) => {
+  return create(state, (draft) => {
+    draft.messages.push(signal);
+    // Modify draft as needed - it's safe to mutate here
+  });
+}
+
+// For simple updates, you can also use spread operators
+transition: (signal) => (state) => {
+  return {
+    ...state,
+    messages: [...state.messages, signal],
+  };
+}
 ```
 
 ## Example: Persistent Agent Driver
@@ -49,16 +115,22 @@ its state.
 
 ```typescript
 import { createMoorex, type MoorexDefinition } from './index';
+import { create } from 'mutative';
 
+// Define your signal types - these trigger state transitions
 type Signal =
   | { type: 'user'; message: string }
   | { type: 'tool'; name: string; result: string }
   | { type: 'assistant'; message: string };
 
+// Define your effect types - these represent side effects to run.
+// Note: Effect types no longer need a `key` property; the Record key serves
+// as the identifier.
 type Effect =
   | { kind: 'call-llm'; prompt: string }
   | { kind: 'call-tool'; id: string; name: string; input: string };
 
+// Define your state shape
 type AgentState = {
   messages: Signal[];
   pendingMessages: Signal[];
@@ -66,89 +138,126 @@ type AgentState = {
 };
 
 const definition: MoorexDefinition<AgentState, Signal, Effect> = {
-  initialState: {
+  // Initialization function that returns the initial state
+  initiate: () => ({
     messages: [],
     pendingMessages: [],
     pendingToolCalls: [],
-  },
+  }),
+
+  // Pure state transition function: (signal) => (state) => newState.
+  // This defines how signals transform your state.
+  // All parameters and return values are Immutable (see Immutability section
+  // above).
   transition: (signal) => (state) => {
-    // Simple placeholder transition logic.
-    return {
-      ...state,
-      messages: [...state.messages, signal],
-      pendingMessages:
-        signal.type === 'user'
-          ? [...state.pendingMessages, signal]
-          : state.pendingMessages.filter((msg) => msg !== signal),
-  pendingToolCalls:
-    signal.type === 'tool'
-      ? state.pendingToolCalls.filter((call) => call.id !== signal.name)
-      : state.pendingToolCalls,
-    };
+    // Implement state transition logic using mutative or spread operators:
+    // - Add signal to messages array.
+    // - Update pendingMessages based on signal type (add user messages,
+    //   remove processed ones)
+    // - Update pendingToolCalls based on signal type (remove completed tool
+    //   calls)
+    // - Return new immutable state.
+    // Example with mutative:
+    //   return create(state, (draft) => { draft.messages.push(signal); });
+    return state;
   },
+
+  // Effect selector: (state) => Record<string, Effect>
+  // Returns a Record where keys are effect identifiers and values are effects.
+  // Moorex uses these keys to reconcile effects (cancel obsolete, start new)
   effectsAt: (state) => {
-    if (state.pendingMessages.length > 0) {
-      const prompt = buildPrompt(state.messages, state.pendingMessages);
-      return { [`llm:${hash(prompt)}`]: { kind: 'call-llm', prompt } };
-    }
-    if (state.pendingToolCalls.length > 0) {
-      const { id, name, input } = state.pendingToolCalls[0];
-      return { [`tool:${id}`]: { kind: 'call-tool', id, name, input } };
-    }
+    // Based on state, determine which effects should be running:
+    // - If pendingMessages exist, return LLM call effect with key like
+    //   `llm:${promptHash}`
+    // - If pendingToolCalls exist, return tool execution effects with keys
+    //   like `tool:${id}`
+    // - Return empty object {} if no effects needed
+    // - Effect objects must be immutable (use mutative or object literals)
+    // Example structure:
+    //   { 'effect-key': { kind: 'call-llm', prompt: '...' } }
     return {};
   },
-  runEffect: (effect) => {
+
+  // Effect runner: (effect, state) => { start, cancel }
+  // Creates an initializer for running a specific effect.
+  // Note: receives both effect and the state that generated this effect.
+  runEffect: (effect, state) => {
     if (effect.kind === 'call-llm') {
       return {
+        // Async function that runs the effect and dispatches signals on
+        // completion
         start: async (dispatch) => {
-          const completion = await callLLM(effect.prompt);
-          dispatch({ type: 'assistant', message: completion });
+          // Call LLM with effect.prompt
+          // When done, dispatch assistant message signal
+          // dispatch({ type: 'assistant', message: completion });
         },
-        cancel: () => cancelLLM(effect.prompt),
+        // Function to cancel the effect if it's no longer needed
+        cancel: () => {
+          // Cancel the LLM call (e.g., abort fetch, close connection)
+        },
       };
     }
     if (effect.kind === 'call-tool') {
       return {
         start: async (dispatch) => {
-          const result = await executeTool(effect.name, effect.input);
-          dispatch({ type: 'tool', name: effect.id, result });
+          // Execute tool with effect.name and effect.input.
+          // When done, dispatch tool result signal:
+          // dispatch({ type: 'tool', name: effect.id, result: '...' });
         },
-        cancel: () => cancelTool(effect.name),
+        cancel: () => {
+          // Cancel tool execution if possible
+        },
       };
     }
+    // TypeScript exhaustiveness check
     throw new Error(`Unknown effect kind ${(effect satisfies never).kind}`);
   },
 };
 
+// Create the Moorex machine instance
 const agent = createMoorex(definition);
 
+// Subscribe to events (state updates, effect lifecycle, etc.)
 agent.on((event) => {
   console.log('[agent-event]', event);
+  // event.type can be: 'signal-received', 'state-updated', 'effect-started',
+  // 'effect-completed', 'effect-canceled', 'effect-failed'
 });
 
-agent.dispatch({ type: 'user', message: 'Summarize the latest log entries.' });
+// Dispatch signals to trigger state transitions
+agent.dispatch({
+  type: 'user',
+  message: 'Summarize the latest log entries.',
+});
+
+// Get current state
+const currentState = agent.getState();
 ```
 
 Even if the agent restarts, hydrating `AgentState` and letting effect
-reconciliation run will resume or cancel effects exactly as required.
-
-> The `buildPrompt`, `callLLM`, `cancelLLM`, `executeTool`, and `cancelTool`
-> functions are placeholders you would provide.
+reconciliation run will resume or cancel effects exactly as required. The Record
+keys returned by `effectsAt` serve as stable identifiers for effects across
+restarts—effects with matching keys are considered the same effect.
 
 ## Effect Reconciliation
 
 On every state change Moorex:
 
-1. Calls `effectsAt(state)` to compute the desired effect set as a Record (key-value map).
+1. Calls `effectsAt(state)` to compute the desired effect set as a Record
+   (key-value map).
 2. Cancels running effects whose keys disappeared from the Record.
 3. Starts any new effects whose keys were introduced in the Record.
 4. Leaves untouched effects whose keys are still present.
 
-The Record's keys serve as effect identifiers for reconciliation, so Effect types no longer need to have a `key` property.
+The Record's keys serve as effect identifiers for reconciliation, so Effect
+types no longer need to have a `key` property.
 
-Each effect's lifecycle is managed by the `runEffect(effect)` return value:
+Each effect's lifecycle is managed by the `runEffect(effect, state)` return value:
 
-- `start(dispatch)` launches the effect and resolves when it finishes.
+- `runEffect(effect, state)` receives the effect and the state that generated
+  it, returning an initializer with `start` and `cancel` methods.
+- `start(dispatch)` launches the effect and resolves when it finishes. Use
+  `dispatch` to send signals back to the machine.
 - `cancel()` aborts the effect; Moorex calls this when the effect key is no
   longer needed.
 
@@ -169,9 +278,7 @@ following order for each dispatch batch:
 4. **`state-updated`**: emitted once after the batch of signals reconciles and
    state is committed.
 
-All events include `effectCount`, the number of effects still running after the
-event has been processed.
-
 ## License
 
 MIT
+

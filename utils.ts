@@ -1,5 +1,5 @@
 import { type Immutable } from 'mutative';
-import type { RunningEffect, MoorexEventBase } from './types';
+import type { RunningEffect, MoorexEvent } from './types';
 
 /**
  * 创建 guard 函数，确保只有当前正在运行的 effect 才能执行回调
@@ -19,7 +19,7 @@ export const guardCurrentEffect = <Effect>(
  */
 export const withEffectErrorHandling = <State, Signal, Effect, T>(
   effect: Immutable<Effect>,
-  emit: (event: MoorexEventBase<State, Signal, Effect>) => void,
+  emit: (event: MoorexEvent<State, Signal, Effect>) => void,
   fn: () => T,
 ): T | undefined => {
   try {
@@ -36,7 +36,7 @@ export const withEffectErrorHandling = <State, Signal, Effect, T>(
 export const attachCompletionHandlers = <State, Signal, Effect>(
   entry: RunningEffect<Effect>,
   running: Map<string, RunningEffect<Effect>>,
-  emit: (event: MoorexEventBase<State, Signal, Effect>) => void,
+  emit: (event: MoorexEvent<State, Signal, Effect>) => void,
 ) => {
   entry.complete
     .then(

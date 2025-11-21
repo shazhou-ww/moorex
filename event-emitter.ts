@@ -1,32 +1,23 @@
 import { create } from 'mutative';
-import type { MoorexEvent, MoorexEventBase, CancelFn } from './types';
+import type { CancelFn } from './types';
 
 /**
  * 创建事件发射器
  *
- * @template State - 机器的状态类型
- * @template Signal - 信号类型
- * @template Effect - Effect 类型
- * @param getEffectCount - 获取当前运行的 effects 数量的函数
+ * @template Event - 事件类型
  * @returns 事件发射器对象，包含 emit 和 on 方法
  */
-export const createEventEmitter = <State, Signal, Effect>(
-  getEffectCount: () => number,
-) => {
-  const handlers = new Set<(event: MoorexEvent<State, Signal, Effect>) => void>();
+export const createEventEmitter = <E>() => {
+  const handlers = new Set<(event: E) => void>();
 
-  const emit = (event: MoorexEventBase<State, Signal, Effect>) => {
+  const emit = (event: E) => {
     const immutableEvent = create(event, () => {});
-    const enriched: MoorexEvent<State, Signal, Effect> = {
-      ...immutableEvent,
-      effectCount: getEffectCount(),
-    };
-    for (const handler of [...handlers]) {
-      handler(enriched);
+    for (const handler of handlers) {
+      handler(immutableEvent);
     }
   };
 
-  const on = (handler: (event: MoorexEvent<State, Signal, Effect>) => void): CancelFn => {
+  const on = (handler: (event: E) => void): CancelFn => {
     handlers.add(handler);
     return () => handlers.delete(handler);
   };
