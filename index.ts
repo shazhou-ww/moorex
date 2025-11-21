@@ -68,9 +68,13 @@ export type MoorexDefinition<State, Signal, Effect extends HasKey> = {
   /**
    * 运行一个 effect。
    * 返回一个初始化器，包含 `start` 和 `cancel` 方法。
+   *
+   * @param effect - 要运行的 effect
+   * @param state - 生成该 effect 时的状态
    */
   runEffect: (
     effect: Effect,
+    state: State,
   ) => EffectInitializer<Signal>;
 };
 
@@ -210,7 +214,7 @@ const attachCompletionHandlers = <State, Signal, Effect extends HasKey>(
  *   initialState: { count: 0 },
  *   transition: (signal) => (state) => ({ ...state, count: state.count + 1 }),
  *   effectsAt: (state) => state.count > 0 ? [{ key: 'effect-1' }] : [],
- *   runEffect: (effect) => ({
+ *   runEffect: (effect, state) => ({
  *     start: async (dispatch) => { },
  *     cancel: () => { }
  *   })
@@ -247,10 +251,10 @@ export const createMoorex = <State, Signal, Effect extends HasKey>(
 
   let scheduleSignal: (signal: Signal) => void;
 
-  const startEffect = (effect: Effect) => {
+  const startEffect = (effect: Effect, state: State) => {
     let initializer: EffectInitializer<Signal>;
     try {
-      initializer = definition.runEffect(effect);
+      initializer = definition.runEffect(effect, state);
     } catch (error) {
       emit({ type: 'effect-failed', effect, error });
       return;
@@ -296,7 +300,7 @@ export const createMoorex = <State, Signal, Effect extends HasKey>(
 
     for (const [key, effect] of desired) {
       if (running.has(key)) continue;
-      startEffect(effect);
+      startEffect(effect, workingState);
     }
   };
 
