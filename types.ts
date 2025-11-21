@@ -1,11 +1,6 @@
 import { type Immutable } from 'mutative';
 
 /**
- * 具有 key 属性的类型约束
- */
-export type HasKey = { key: string };
-
-/**
  * 取消函数类型
  */
 export type CancelFn = () => void;
@@ -29,9 +24,9 @@ export type EffectInitializer<Signal> = {
  *
  * @template State - 机器的状态类型
  * @template Signal - 信号类型，用于触发状态转换
- * @template Effect - Effect 类型，必须包含 `key: string` 属性
+ * @template Effect - Effect 类型
  */
-export type MoorexDefinition<State, Signal, Effect extends HasKey> = {
+export type MoorexDefinition<State, Signal, Effect> = {
   /** 初始状态 */
   initialState: Immutable<State>;
   /**
@@ -42,11 +37,11 @@ export type MoorexDefinition<State, Signal, Effect extends HasKey> = {
   transition: (signal: Immutable<Signal>) => (state: Immutable<State>) => Immutable<State>;
   /**
    * 根据当前状态计算应该运行的 effects。
-   * 接收 Immutable 状态，返回 Immutable Effect 数组。
+   * 接收 Immutable 状态，返回 Effect Record，key 作为 Effect 的标识用于 reconciliation。
    * 参数和返回值都是 Immutable 的，不允许修改。
-   * 返回的 effects 会根据 `key` 去重。
+   * Record 的 key 用于在 reconciliation 时做一致性判定。
    */
-  effectsAt: (state: Immutable<State>) => readonly Immutable<Effect>[];
+  effectsAt: (state: Immutable<State>) => Record<string, Immutable<Effect>>;
   /**
    * 运行一个 effect。
    * 接收 Immutable effect 和 Immutable state，返回一个初始化器，包含 `start` 和 `cancel` 方法。
@@ -64,7 +59,7 @@ export type MoorexDefinition<State, Signal, Effect extends HasKey> = {
 /**
  * Moorex 事件基础类型
  */
-export type MoorexEventBase<State, Signal, Effect extends HasKey> =
+export type MoorexEventBase<State, Signal, Effect> =
   | { type: 'signal-received'; signal: Immutable<Signal> }
   | { type: 'state-updated'; state: Immutable<State> }
   | { type: 'effect-started'; effect: Immutable<Effect> }
@@ -89,7 +84,7 @@ export type MoorexEventBase<State, Signal, Effect extends HasKey> =
  * @template Signal - 信号类型
  * @template Effect - Effect 类型
  */
-export type MoorexEvent<State, Signal, Effect extends HasKey> = MoorexEventBase<
+export type MoorexEvent<State, Signal, Effect> = MoorexEventBase<
   State,
   Signal,
   Effect
@@ -107,7 +102,7 @@ export type MoorexEvent<State, Signal, Effect extends HasKey> = MoorexEventBase<
  * @template Signal - 信号类型
  * @template Effect - Effect 类型
  */
-export type Moorex<State, Signal, Effect extends HasKey> = {
+export type Moorex<State, Signal, Effect> = {
   /**
    * 分发一个信号以触发状态转换。
    * 信号会被加入队列，在下一个微任务中批量处理。
@@ -124,7 +119,6 @@ export type Moorex<State, Signal, Effect extends HasKey> = {
   on(handler: (event: MoorexEvent<State, Signal, Effect>) => void): CancelFn;
   /**
    * 获取当前状态。
-   * 返回已提交的状态（不包括正在处理中的 workingState）。
    * 返回的状态是 Immutable 的，不允许修改。
    */
   getState(): Immutable<State>;
@@ -133,7 +127,7 @@ export type Moorex<State, Signal, Effect extends HasKey> = {
 /**
  * 运行中的 Effect（内部使用）
  */
-export type RunningEffect<Effect extends HasKey> = {
+export type RunningEffect<Effect> = {
   key: string;
   effect: Immutable<Effect>;
   complete: Promise<void>;

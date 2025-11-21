@@ -1,7 +1,7 @@
-import { create, type Immutable } from 'mutative';
+import { type Immutable } from 'mutative';
 import { createSignalQueue } from './signal-queue';
+import { createEventEmitter } from './event-emitter';
 import type {
-  HasKey,
   CancelFn,
   EffectInitializer,
   MoorexDefinition,
@@ -16,53 +16,51 @@ export type {
   MoorexDefinition,
   MoorexEvent,
   Moorex,
-  HasKey,
   CancelFn,
   EffectInitializer,
 };
 
-const dedupeByKey = <Effect extends HasKey>(effects: readonly Immutable<Effect>[]): Map<string, Immutable<Effect>> => {
-  const byKey = new Map<string, Immutable<Effect>>();
-  for (const effect of effects) {
-    if (!byKey.has(effect.key)) byKey.set(effect.key, effect);
-  }
-  return byKey;
-};
-
-const isCurrentEffect = <Effect extends HasKey>(
+const guardCurrentEffect = <Effect>(
   running: Map<string, RunningEffect<Effect>>,
   entry: RunningEffect<Effect>,
-): boolean => running.get(entry.key) === entry;
-
-const cancelRunningEffect = <State, Signal, Effect extends HasKey>(
-  entry: RunningEffect<Effect>,
-  emit: (event: MoorexEventBase<State, Signal, Effect>) => void,
-) => {
-  try {
-    entry.cancel();
-  } catch (error) {
-    emit({ type: 'effect-failed', effect: entry.effect, error });
-    return;
-  }
-  emit({ type: 'effect-canceled', effect: entry.effect });
+) => <T extends any[]>(callback: (...args: T) => void): (...args: T) => void => {
+  return (...args: T) => {
+    if (running.get(entry.key) !== entry) return;
+    callback(...args);
+  };
 };
 
-const attachCompletionHandlers = <State, Signal, Effect extends HasKey>(
+const withEffectErrorHandling = <State, Signal, Effect, T>(
+  effect: Immutable<Effect>,
+  emit: (event: MoorexEventBase<State, Signal, Effect>) => void,
+  fn: () => T,
+): T | undefined => {
+  try {
+    return fn();
+  } catch (error) {
+    emit({ type: 'effect-failed', effect, error });
+    return undefined;
+  }
+};
+
+const attachCompletionHandlers = <State, Signal, Effect>(
   entry: RunningEffect<Effect>,
   running: Map<string, RunningEffect<Effect>>,
   emit: (event: MoorexEventBase<State, Signal, Effect>) => void,
 ) => {
   entry.complete
-    .then(() => {
-      if (!isCurrentEffect(running, entry)) return;
-      running.delete(entry.key);
-      emit({ type: 'effect-completed', effect: entry.effect });
-    })
-    .catch((error) => {
-      if (!isCurrentEffect(running, entry)) return;
-      running.delete(entry.key);
-      emit({ type: 'effect-failed', effect: entry.effect, error });
-    });
+    .then(
+      guardCurrentEffect(running, entry)(() => {
+        running.delete(entry.key);
+        emit({ type: 'effect-completed', effect: entry.effect });
+      })
+    )
+    .catch(
+      guardCurrentEffect(running, entry)((error) => {
+        running.delete(entry.key);
+        emit({ type: 'effect-failed', effect: entry.effect, error });
+      })
+    )
 };
 
 
@@ -85,7 +83,7 @@ const attachCompletionHandlers = <State, Signal, Effect extends HasKey>(
  * const definition: MoorexDefinition<State, Signal, Effect> = {
  *   initialState: { count: 0 },
  *   transition: (signal) => (state) => ({ ...state, count: state.count + 1 }),
- *   effectsAt: (state) => state.count > 0 ? [{ key: 'effect-1' }] : [],
+ *   effectsAt: (state) => state.count > 0 ? { 'effect-1': effectData } : {},
  *   runEffect: (effect, state) => ({
  *     start: async (dispatch) => { },
  *     cancel: () => { }
@@ -99,119 +97,74 @@ const attachCompletionHandlers = <State, Signal, Effect extends HasKey>(
  *
  * @template State - 机器的状态类型
  * @template Signal - 信号类型，用于触发状态转换
- * @template Effect - Effect 类型，必须包含 `key: string` 属性
+ * @template Effect - Effect 类型
  * @param definition - Moore 机器的定义配置
  * @returns Moorex 机器实例
  */
-export const createMoorex = <State, Signal, Effect extends HasKey>(
+export const createMoorex = <State, Signal, Effect>(
   definition: MoorexDefinition<State, Signal, Effect>,
 ): Moorex<State, Signal, Effect> => {
-  const handlers = new Set<(event: MoorexEvent<State, Signal, Effect>) => void>();
   const running = new Map<string, RunningEffect<Effect>>();
-  // 使用 mutative 确保初始状态的 immutability
   let state: Immutable<State> = definition.initialState;
-  let workingState: Immutable<State> = state;
 
-  const emit = (event: MoorexEventBase<State, Signal, Effect>) => {
-    // 事件中的 state, signal, effect 字段值已经是 Immutable 类型（调用方已确保）
-    // 使用 create 确保整个 event 对象本身也是 immutable 的
-    const immutableEvent = create(event, () => {});
-    const enriched: MoorexEvent<State, Signal, Effect> = {
-      ...immutableEvent,
-      effectCount: running.size,
-    };
-    for (const handler of [...handlers]) {
-      handler(enriched);
-    }
-  };
+  const { emit, on } = createEventEmitter<State, Signal, Effect>(() => running.size);
 
-  let scheduleSignal: (signal: Immutable<Signal>) => void;
-
-  const startEffect = (effect: Immutable<Effect>, state: Immutable<State>) => {
-    let initializer: EffectInitializer<Signal>;
-    try {
-      initializer = definition.runEffect(effect, state);
-    } catch (error) {
-      emit({ type: 'effect-failed', effect, error });
-      return;
-    }
+  const startEffect = (key: string, effect: Immutable<Effect>, state: Immutable<State>) => {
+    const initializer = withEffectErrorHandling(effect, emit, () => definition.runEffect(effect, state));
+    if (!initializer) return;
 
     const entry: RunningEffect<Effect> = {
-      key: effect.key,
+      key,
       effect,
       complete: Promise.resolve(), // 临时值，会在下面更新
       cancel: initializer.cancel,
     };
-    running.set(effect.key, entry);
+    running.set(key, entry);
 
-    const guardedDispatch = (signal: Immutable<Signal>) => {
-      if (running.get(effect.key) !== entry) return;
-      // signal 已经是 Immutable 类型，但为了确保运行时也是 immutable 的
-      scheduleSignal(signal);
-    };
-
-    let completion: Promise<void>;
-    try {
-      completion = Promise.resolve(initializer.start(guardedDispatch));
-    } catch (error) {
-      running.delete(effect.key);
-      emit({ type: 'effect-failed', effect, error });
-      return;
-    }
-
-    entry.complete = completion;
-
+    entry.complete = initializer.start(guardCurrentEffect(running, entry)(schedule))
     emit({ type: 'effect-started', effect });
     attachCompletionHandlers(entry, running, emit);
   };
 
-  const reconcileEffects = () => {
-    // workingState 已经是 Immutable<State> 类型
-    const effects = definition.effectsAt(workingState);
-    // effects 已经是 readonly Immutable<Effect>[]，类型系统保证不可变
-    const desired = dedupeByKey(effects);
-
+  const cancelObsoleteEffects = (currentEffects: Record<string, Immutable<Effect>>) => {
     for (const [key, entry] of [...running]) {
-      if (!desired.has(key)) {
+      if (!(key in currentEffects)) {
         running.delete(key);
-        cancelRunningEffect(entry, emit);
+        withEffectErrorHandling(entry.effect, emit, entry.cancel);
+        emit({ type: 'effect-canceled', effect: entry.effect });
       }
     }
+  };
 
-    for (const [key, effect] of desired) {
+  const startNewEffects = (currentEffects: Record<string, Immutable<Effect>>) => {
+    for (const [key, effect] of Object.entries(currentEffects)) {
       if (running.has(key)) continue;
-      startEffect(effect, workingState);
+      startEffect(key, effect, state);
     }
+  };
+
+  const reconcileEffects = () => {
+    const currentEffects = definition.effectsAt(state);
+
+    cancelObsoleteEffects(currentEffects);
+    startNewEffects(currentEffects);
   };
 
   const { schedule } = createSignalQueue<Signal>((signals) => {
-    // signals 已经是 Immutable<Signal>[]，类型系统保证不可变
     // 使用 reduce 累积状态转换
-    workingState = signals.reduce((currentState, signal) => {
+    state = signals.reduce((currentState, signal) => {
       emit({ type: 'signal-received', signal });
-      // transition 返回的新 state 已经是 Immutable<State>，类型系统保证不可变
       return definition.transition(signal)(currentState);
-    }, workingState);
+    }, state);
 
     reconcileEffects();
-    state = workingState;
     emit({ type: 'state-updated', state });
   });
-  scheduleSignal = schedule;
-
-  const dispatch = (signal: Immutable<Signal>) => {
-    scheduleSignal(signal);
-  };
-
-  const on = (handler: (event: MoorexEvent<State, Signal, Effect>) => void) => {
-    handlers.add(handler);
-    return () => handlers.delete(handler);
-  };
 
   reconcileEffects();
 
   return {
-    dispatch,
+    dispatch: schedule,
     on,
     getState: () => state,
   };

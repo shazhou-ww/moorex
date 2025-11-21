@@ -32,7 +32,7 @@ describe('createMoorex', () => {
     const definition: MoorexDefinition<State, NumberSignal, NumberEffect> = {
       initialState: { active: true },
       transition: () => (state) => state,
-      effectsAt: () => [{ key: 'alpha', label: 'initial' }],
+      effectsAt: () => ({ alpha: { key: 'alpha', label: 'initial' } }),
       runEffect: (effect, state) => {
         runCount += 1;
         return {
@@ -69,7 +69,7 @@ describe('createMoorex', () => {
       initialState: { active: true },
       transition: (signal) => (state) =>
         signal === 'toggle' ? { active: !state.active } : state,
-      effectsAt: (state) => (state.active ? [{ key: 'alpha', label: 'active' }] : []),
+      effectsAt: (state): Record<string, NumberEffect> => (state.active ? { alpha: { key: 'alpha', label: 'active' } } : {}),
       runEffect: (effect, state) => ({
         start: () => new Promise(() => {}),
         cancel: () => {
@@ -108,8 +108,8 @@ describe('createMoorex', () => {
         if (signal === 'toggle') return { count: state.count, active: !state.active };
         return state;
       },
-      effectsAt: (state) =>
-        state.active && state.count === 0 ? [{ key: 'alpha', label: 'incrementer' }] : [],
+      effectsAt: (state): Record<string, NumberEffect> =>
+        state.active && state.count === 0 ? { alpha: { key: 'alpha', label: 'incrementer' } } : {},
       runEffect: (effect, state) => {
         const deferred = createDeferred();
         return {
@@ -153,7 +153,7 @@ describe('createMoorex', () => {
       initialState: { active: true },
       transition: (signal) => (state) =>
         signal === 'toggle' ? { active: !state.active } : state,
-      effectsAt: (state) => (state.active ? [{ key: 'alpha', label: 'active' }] : []),
+      effectsAt: (state): Record<string, NumberEffect> => (state.active ? { alpha: { key: 'alpha', label: 'active' } } : {}),
       runEffect: (effect, state) => {
         const deferred = createDeferred();
         return {
@@ -186,10 +186,9 @@ describe('createMoorex', () => {
     const definition: MoorexDefinition<State, NumberSignal, NumberEffect> = {
       initialState: { stage: 'duplicate' },
       transition: () => (state) => state,
-      effectsAt: () => [
-        { key: 'alpha', label: 'first' },
-        { key: 'alpha', label: 'second' },
-      ],
+      effectsAt: () => ({
+        alpha: { key: 'alpha', label: 'first' },
+      }),
       runEffect: (effect, state) => {
         runCount += 1;
         return {
@@ -216,7 +215,7 @@ describe('createMoorex', () => {
         if (signal === 'toggle') return { count: state.count, active: !state.active };
         return state;
       },
-      effectsAt: (state) => (state.active ? [{ key: 'alpha', label: 'active' }] : []),
+      effectsAt: (state): Record<string, NumberEffect> => (state.active ? { alpha: { key: 'alpha', label: 'active' } } : {}),
       runEffect: (effect, state) => {
         const pending = new Promise<void>(() => {});
         return {
@@ -263,7 +262,7 @@ describe('createMoorex', () => {
       initialState: { count: 0 },
       transition: (signal) => (state) =>
         signal === 'increment' ? { count: state.count + 1 } : state,
-      effectsAt: () => [],
+      effectsAt: () => ({}),
       runEffect: (effect, state) => {
         throw new Error('should not run');
       },
@@ -288,7 +287,7 @@ describe('createMoorex', () => {
       initialState: { active: true },
       transition: (signal) => (state) =>
         signal === 'toggle' ? { active: !state.active } : state,
-      effectsAt: (state) => (state.active ? [{ key: 'alpha', label: 'active' }] : []),
+      effectsAt: (state): Record<string, NumberEffect> => (state.active ? { alpha: { key: 'alpha', label: 'active' } } : {}),
       runEffect: (effect, state) => ({
         start: () => new Promise(() => {}),
         cancel: () => {
@@ -321,7 +320,7 @@ describe('createMoorex', () => {
       initialState: { shouldRun: false },
       transition: (signal) => (state) =>
         signal === 'toggle' ? { shouldRun: !state.shouldRun } : state,
-      effectsAt: (state) => (state.shouldRun ? [{ key: 'alpha', label: 'boom' }] : []),
+      effectsAt: (state): Record<string, NumberEffect> => (state.shouldRun ? { alpha: { key: 'alpha', label: 'boom' } } : {}),
       runEffect: (effect, state) => {
         throw error;
       },
@@ -351,7 +350,7 @@ describe('createMoorex', () => {
     const definition: MoorexDefinition<State, NumberSignal, NumberEffect> = {
       initialState: { active: true },
       transition: () => (state) => state,
-      effectsAt: () => [{ key: 'alpha', label: 'active' }],
+      effectsAt: (): Record<string, NumberEffect> => ({ alpha: { key: 'alpha', label: 'active' } }),
       runEffect: (effect, state) => ({
         start: () => deferred.promise,
         cancel: () => {},

@@ -56,8 +56,8 @@ type Signal =
   | { type: 'assistant'; message: string };
 
 type Effect =
-  | { key: string; kind: 'call-llm'; prompt: string }
-  | { key: string; kind: 'call-tool'; id: string; name: string; input: string };
+  | { kind: 'call-llm'; prompt: string }
+  | { kind: 'call-tool'; id: string; name: string; input: string };
 
 type AgentState = {
   messages: Signal[];
@@ -89,13 +89,13 @@ const definition: MoorexDefinition<AgentState, Signal, Effect> = {
   effectsAt: (state) => {
     if (state.pendingMessages.length > 0) {
       const prompt = buildPrompt(state.messages, state.pendingMessages);
-      return [{ key: `llm:${hash(prompt)}`, kind: 'call-llm', prompt }];
+      return { [`llm:${hash(prompt)}`]: { kind: 'call-llm', prompt } };
     }
     if (state.pendingToolCalls.length > 0) {
       const { id, name, input } = state.pendingToolCalls[0];
-      return [{ key: `tool:${id}`, kind: 'call-tool', id, name, input }];
+      return { [`tool:${id}`]: { kind: 'call-tool', id, name, input } };
     }
-    return [];
+    return {};
   },
   runEffect: (effect) => {
     if (effect.kind === 'call-llm') {
@@ -139,11 +139,12 @@ reconciliation run will resume or cancel effects exactly as required.
 
 On every state change Moorex:
 
-1. Calls `effectsAt(state)` to compute the desired effect set.
-2. Deduplicates them by `effect.key`.
-3. Cancels running effects whose keys disappeared.
-4. Starts any new effects whose keys were introduced.
-5. Leaves untouched effects whose keys are still present.
+1. Calls `effectsAt(state)` to compute the desired effect set as a Record (key-value map).
+2. Cancels running effects whose keys disappeared from the Record.
+3. Starts any new effects whose keys were introduced in the Record.
+4. Leaves untouched effects whose keys are still present.
+
+The Record's keys serve as effect identifiers for reconciliation, so Effect types no longer need to have a `key` property.
 
 Each effect's lifecycle is managed by the `runEffect(effect)` return value:
 
