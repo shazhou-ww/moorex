@@ -6,6 +6,10 @@
 [![license](https://img.shields.io/npm/l/moorex.svg)](https://github.com/shazhou-ww/moorex/blob/main/LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue.svg)](https://www.typescriptlang.org/)
 
+<div align="center">
+  <img src="./moorex.svg" alt="Moorex Logo" width="200">
+</div>
+
 Moorex is a generic asynchronous Moore machine. It keeps track of state, drives
 effects strictly from the current state, and reconciles those effects whenever
 the state changes. The design originated from building **persistent AI agents**
