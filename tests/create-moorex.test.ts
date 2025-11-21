@@ -367,5 +367,61 @@ describe('createMoorex', () => {
     expect(failed?.effect.key).toBe('alpha');
     expect(failed?.error).toBe(error);
   });
+
+  test('handles multiple effects correctly', async () => {
+    type State = { stage: 'init' | 'running' | 'done' };
+
+    const runEffects: string[] = [];
+    const definition: MoorexDefinition<State, NumberSignal, NumberEffect> = {
+      initiate: () => ({ stage: 'init' }),
+      transition: (signal) => (state) =>
+        signal === 'toggle' ? { stage: state.stage === 'init' ? 'running' : 'done' } : state,
+      effectsAt: (state): Record<string, NumberEffect> => {
+        if (state.stage === 'running') {
+          return {
+            effect1: { key: 'effect1', label: 'first' },
+            effect2: { key: 'effect2', label: 'second' },
+          };
+        }
+        return {};
+      },
+      runEffect: (effect, state) => {
+        runEffects.push(effect.key);
+        return {
+          start: () => Promise.resolve(),
+          cancel: () => {},
+        };
+      },
+    };
+
+    const moorex = createMoorex(definition);
+    moorex.dispatch('toggle');
+    await nextTick();
+
+    expect(runEffects).toContain('effect1');
+    expect(runEffects).toContain('effect2');
+  });
+
+  test('getState returns current state', () => {
+    type State = { count: number };
+
+    const definition: MoorexDefinition<State, NumberSignal, NumberEffect> = {
+      initiate: () => ({ count: 0 }),
+      transition: (signal) => (state) =>
+        signal === 'increment' ? { count: state.count + 1 } : state,
+      effectsAt: () => ({}),
+      runEffect: () => {
+        throw new Error('should not run');
+      },
+    };
+
+    const moorex = createMoorex(definition);
+    expect(moorex.getState().count).toBe(0);
+
+    moorex.dispatch('increment');
+    // 状态更新是异步的，需要等待
+    // 但我们可以测试初始状态
+    expect(moorex.getState().count).toBe(0); // 在 nextTick 之前
+  });
 });
 

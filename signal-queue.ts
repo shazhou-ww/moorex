@@ -26,16 +26,10 @@ export const createSignalQueue = <Signal>(
     if (draining) return;
     draining = true;
     queueMicrotask(() => {
-      if (queue.length === 0) {
-        draining = false;
-        return;
-      }
-
       const batch = queue.splice(0, queue.length);
-      processBatch(batch);
-
+      batch.length > 0 && processBatch(batch);
       draining = false;
-      if (queue.length > 0) drain();
+      queue.length > 0 && drain();
     });
   };
 
