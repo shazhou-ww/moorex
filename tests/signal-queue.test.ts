@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { createSignalQueue } from '../src/signal-queue';
 
 const nextTick = () => new Promise<void>((resolve) => queueMicrotask(resolve));

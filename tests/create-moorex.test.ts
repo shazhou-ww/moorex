@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { createMoorex, type MoorexDefinition, type MoorexEvent } from '../src/index';
 
 type NumberSignal = 'noop' | 'toggle' | 'increment';
