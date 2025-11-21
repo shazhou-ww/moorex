@@ -1,6 +1,6 @@
 {
   "name": "moorex",
-  "version": "0.2.2-alpha-2",
+  "version": "0.2.2",
   "description": "A generic asynchronous Moore machine for building persistent AI agents that survive crashes, restarts, or migrations",
   "keywords": [
     "moore-machine",
