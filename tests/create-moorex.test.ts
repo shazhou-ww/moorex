@@ -331,6 +331,9 @@ describe('createMoorex', () => {
     );
     expect(failed?.effect.key).toBe('alpha');
     expect(failed?.error).toBe(error);
+    // 验证当 runEffect 抛出错误时，startEffect 提前返回，不会发出 effect-started 事件
+    const started = events.find((event) => event.type === 'effect-started');
+    expect(started).toBeUndefined();
   });
 
   test('emits effect-failed when completion rejects', async () => {
@@ -422,6 +425,79 @@ describe('createMoorex', () => {
     // 状态更新是异步的，需要等待
     // 但我们可以测试初始状态
     expect(moorex.getState().count).toBe(0); // 在 nextTick 之前
+  });
+
+  test('cancels multiple obsolete effects', async () => {
+    type State = { stage: 'init' | 'running' | 'done' };
+
+    let cancelCalls = 0;
+    const definition: MoorexDefinition<State, NumberSignal, NumberEffect> = {
+      initiate: () => ({ stage: 'running' }),
+      transition: (signal) => (state) =>
+        signal === 'toggle' ? { stage: state.stage === 'running' ? 'done' : 'running' } : state,
+      effectsAt: (state): Record<string, NumberEffect> => {
+        if (state.stage === 'running') {
+          return {
+            effect1: { key: 'effect1', label: 'first' },
+            effect2: { key: 'effect2', label: 'second' },
+            effect3: { key: 'effect3', label: 'third' },
+          };
+        }
+        return {};
+      },
+      runEffect: (effect, state) => ({
+        start: () => new Promise(() => {}),
+        cancel: () => {
+          cancelCalls += 1;
+        },
+      }),
+    };
+
+    const moorex = createMoorex(definition);
+    const events: MoorexEvent<State, NumberSignal, NumberEffect>[] = [];
+    moorex.on((event) => events.push(event));
+
+    await nextTick(); // 等待初始 effects 启动
+
+    moorex.dispatch('toggle');
+    await nextTick();
+
+    expect(cancelCalls).toBe(3);
+    const canceledEvents = events.filter((event) => event.type === 'effect-canceled');
+    expect(canceledEvents).toHaveLength(3);
+    expect(canceledEvents.map((e) => e.effect.key).sort()).toEqual(['effect1', 'effect2', 'effect3']);
+  });
+
+  test('does not restart effects that are already running', async () => {
+    type State = { stage: 'init' | 'running' };
+
+    let runCount = 0;
+    const definition: MoorexDefinition<State, NumberSignal, NumberEffect> = {
+      initiate: () => ({ stage: 'running' }),
+      transition: () => (state) => state,
+      effectsAt: (): Record<string, NumberEffect> => ({
+        alpha: { key: 'alpha', label: 'test' },
+      }),
+      runEffect: (effect, state) => {
+        runCount += 1;
+        return {
+          start: () => new Promise(() => {}), // 永不完成的 promise
+          cancel: () => {},
+        };
+      },
+    };
+
+    const moorex = createMoorex(definition);
+    await nextTick(); // 等待初始 effect 启动
+
+    expect(runCount).toBe(1);
+
+    // 触发 reconcileEffects，但 effect 已经在运行中
+    moorex.dispatch('noop');
+    await nextTick();
+
+    // 验证 effect 没有被重新启动
+    expect(runCount).toBe(1);
   });
 });
 
