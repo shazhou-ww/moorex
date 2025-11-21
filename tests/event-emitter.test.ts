@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { createEventEmitter } from '../event-emitter';
+import { createEventEmitter } from '../src/event-emitter';
 
 describe('createEventEmitter', () => {
   test('emits events to registered handlers', () => {

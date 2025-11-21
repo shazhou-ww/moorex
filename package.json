@@ -1,9 +1,32 @@
 {
   "name": "moorex",
   "version": "0.1.1",
-  "module": "index.ts",
+  "description": "A generic asynchronous Moore machine for building persistent AI agents that survive crashes, restarts, or migrations",
+  "keywords": [
+    "moore-machine",
+    "state-machine",
+    "agent",
+    "persistent",
+    "effects",
+    "async",
+    "reconciliation",
+    "ai-agent",
+    "state-management",
+    "automata"
+  ],
+  "main": "src/index.ts",
+  "module": "src/index.ts",
   "type": "module",
   "private": false,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/shazhou-ww/moorex.git"
+  },
+  "homepage": "https://github.com/shazhou-ww/moorex#readme",
+  "bugs": {
+    "url": "https://github.com/shazhou-ww/moorex/issues"
+  },
   "dependencies": {
     "mutative": "^1.3.0"
   },

@@ -3,8 +3,8 @@ import {
   guardCurrentEffect,
   withEffectErrorHandling,
   attachCompletionHandlers,
-} from '../utils';
-import type { RunningEffect, MoorexEvent } from '../types';
+} from '../src/utils';
+import type { RunningEffect, MoorexEvent } from '../src/types';
 
 const nextTick = () => new Promise<void>((resolve) => queueMicrotask(resolve));
 

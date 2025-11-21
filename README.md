@@ -1,5 +1,11 @@
 # Moorex: Persistent Moore Machines for Agents
 
+[![npm version](https://img.shields.io/npm/v/moorex.svg)](https://www.npmjs.com/package/moorex)
+[![npm downloads](https://img.shields.io/npm/dm/moorex.svg)](https://www.npmjs.com/package/moorex)
+[![test coverage](https://img.shields.io/codecov/c/github/shazhou-ww/moorex)](https://codecov.io/gh/shazhou-ww/moorex)
+[![license](https://img.shields.io/npm/l/moorex.svg)](https://github.com/shazhou-ww/moorex/blob/main/LICENSE)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue.svg)](https://www.typescriptlang.org/)
+
 Moorex is a generic asynchronous Moore machine. It keeps track of state, drives
 effects strictly from the current state, and reconciles those effects whenever
 the state changes. The design originated from building **persistent AI agents**

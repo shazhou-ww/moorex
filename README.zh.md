@@ -1,5 +1,11 @@
 # Moorex: 用于 Agent 的持久化 Moore 自动机
 
+[![npm version](https://img.shields.io/npm/v/moorex.svg)](https://www.npmjs.com/package/moorex)
+[![npm downloads](https://img.shields.io/npm/dm/moorex.svg)](https://www.npmjs.com/package/moorex)
+[![test coverage](https://img.shields.io/codecov/c/github/shazhou-ww/moorex)](https://codecov.io/gh/shazhou-ww/moorex)
+[![license](https://img.shields.io/npm/l/moorex.svg)](https://github.com/shazhou-ww/moorex/blob/main/LICENSE)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue.svg)](https://www.typescriptlang.org/)
+
 Moorex 是一个通用的异步 Moore 自动机。它跟踪状态，严格基于当前状态驱动副作用，并在状态改变时协调这些副作用。该设计源于构建**持久化 AI 智能体**的需求，这些智能体必须在崩溃、重启或迁移中存活，同时能够恢复未完成的工作。
 
 ## 快速开始

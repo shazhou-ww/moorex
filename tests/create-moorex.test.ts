@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { createMoorex, type MoorexDefinition, type MoorexEvent } from '../index';
+import { createMoorex, type MoorexDefinition, type MoorexEvent } from '../src/index';
 
 type NumberSignal = 'noop' | 'toggle' | 'increment';
 type NumberEffect = { key: string; label: string };
