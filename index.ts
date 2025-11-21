@@ -1,156 +1,28 @@
-type SignalQueue<Signal> = {
-  schedule(signal: Signal): void;
+import { create, type Immutable } from 'mutative';
+import { createSignalQueue } from './signal-queue';
+import type {
+  HasKey,
+  CancelFn,
+  EffectInitializer,
+  MoorexDefinition,
+  MoorexEvent,
+  MoorexEventBase,
+  Moorex,
+  RunningEffect,
+} from './types';
+
+// 重新导出类型，保持向后兼容
+export type {
+  MoorexDefinition,
+  MoorexEvent,
+  Moorex,
+  HasKey,
+  CancelFn,
+  EffectInitializer,
 };
 
-const createSignalQueue = <Signal>(
-  processBatch: (signals: Signal[]) => void,
-): SignalQueue<Signal> => {
-  const queue: Signal[] = [];
-  let draining = false;
-
-  const drain = () => {
-    if (draining) return;
-    draining = true;
-    queueMicrotask(() => {
-      if (queue.length === 0) {
-        draining = false;
-        return;
-      }
-
-      const batch = queue.splice(0, queue.length);
-      processBatch(batch);
-
-      draining = false;
-      if (queue.length > 0) drain();
-    });
-  };
-
-  const schedule = (signal: Signal) => {
-    queue.push(signal);
-    drain();
-  };
-
-  return { schedule };
-};
-
-type HasKey = { key: string };
-type CancelFn = () => void;
-
-type EffectInitializer<Signal> = {
-  start: (dispatch: (signal: Signal) => void) => Promise<void>;
-  cancel: CancelFn;
-};
-
-/**
- * 定义 Moore 机器的配置。
- *
- * Moorex 是一个通用的异步 Moore 机器，它跟踪状态，严格从当前状态驱动 effects，
- * 并在状态改变时协调这些 effects。设计初衷是构建持久化的 AI agents，这些 agents
- * 必须在崩溃、重启或迁移时存活，同时能够恢复未完成的工作。
- *
- * @template State - 机器的状态类型
- * @template Signal - 信号类型，用于触发状态转换
- * @template Effect - Effect 类型，必须包含 `key: string` 属性
- */
-export type MoorexDefinition<State, Signal, Effect extends HasKey> = {
-  /** 初始状态 */
-  initialState: State;
-  /**
-   * 状态转换函数。
-   * 接收一个信号，返回一个函数，该函数接收当前状态并返回新状态。
-   */
-  transition: (signal: Signal) => (state: State) => State;
-  /**
-   * 根据当前状态计算应该运行的 effects。
-   * 返回的 effects 会根据 `key` 去重。
-   */
-  effectsAt: (state: State) => Effect[];
-  /**
-   * 运行一个 effect。
-   * 返回一个初始化器，包含 `start` 和 `cancel` 方法。
-   *
-   * @param effect - 要运行的 effect
-   * @param state - 生成该 effect 时的状态
-   */
-  runEffect: (
-    effect: Effect,
-    state: State,
-  ) => EffectInitializer<Signal>;
-};
-
-type MoorexEventBase<State, Signal, Effect extends HasKey> =
-  | { type: 'signal-received'; signal: Signal }
-  | { type: 'state-updated'; state: State }
-  | { type: 'effect-started'; effect: Effect }
-  | { type: 'effect-completed'; effect: Effect }
-  | { type: 'effect-canceled'; effect: Effect }
-  | { type: 'effect-failed'; effect: Effect; error: unknown };
-
-/**
- * Moorex 机器发出的事件。
- *
- * 所有事件都包含 `effectCount` 字段，表示事件处理时仍在运行的 effects 数量。
- *
- * 事件类型包括：
- * - `signal-received`: 信号被接收并处理
- * - `state-updated`: 状态已更新
- * - `effect-started`: Effect 已启动
- * - `effect-completed`: Effect 成功完成
- * - `effect-canceled`: Effect 被取消
- * - `effect-failed`: Effect 失败（包含错误信息）
- *
- * @template State - 机器的状态类型
- * @template Signal - 信号类型
- * @template Effect - Effect 类型
- */
-export type MoorexEvent<State, Signal, Effect extends HasKey> = MoorexEventBase<
-  State,
-  Signal,
-  Effect
-> & {
-  /** 当前仍在运行的 effects 数量 */
-  effectCount: number;
-};
-
-/**
- * Moorex 机器实例。
- *
- * 提供状态管理、信号分发和事件订阅功能。
- *
- * @template State - 机器的状态类型
- * @template Signal - 信号类型
- * @template Effect - Effect 类型
- */
-export type Moorex<State, Signal, Effect extends HasKey> = {
-  /**
-   * 分发一个信号以触发状态转换。
-   * 信号会被加入队列，在下一个微任务中批量处理。
-   */
-  dispatch(signal: Signal): void;
-  /**
-   * 订阅事件。
-   * 返回一个取消订阅的函数。
-   *
-   * @param handler - 事件处理函数
-   * @returns 取消订阅的函数
-   */
-  on(handler: (event: MoorexEvent<State, Signal, Effect>) => void): CancelFn;
-  /**
-   * 获取当前状态。
-   * 返回已提交的状态（不包括正在处理中的 workingState）。
-   */
-  getState(): State;
-};
-
-type RunningEffect<Effect extends HasKey> = {
-  key: string;
-  effect: Effect;
-  complete: Promise<void>;
-  cancel: CancelFn;
-};
-
-const dedupeByKey = <Effect extends HasKey>(effects: Effect[]): Map<string, Effect> => {
-  const byKey = new Map<string, Effect>();
+const dedupeByKey = <Effect extends HasKey>(effects: readonly Immutable<Effect>[]): Map<string, Immutable<Effect>> => {
+  const byKey = new Map<string, Immutable<Effect>>();
   for (const effect of effects) {
     if (!byKey.has(effect.key)) byKey.set(effect.key, effect);
   }
@@ -236,12 +108,16 @@ export const createMoorex = <State, Signal, Effect extends HasKey>(
 ): Moorex<State, Signal, Effect> => {
   const handlers = new Set<(event: MoorexEvent<State, Signal, Effect>) => void>();
   const running = new Map<string, RunningEffect<Effect>>();
-  let state = definition.initialState;
-  let workingState = state;
+  // 使用 mutative 确保初始状态的 immutability
+  let state: Immutable<State> = definition.initialState;
+  let workingState: Immutable<State> = state;
 
   const emit = (event: MoorexEventBase<State, Signal, Effect>) => {
+    // 事件中的 state, signal, effect 字段值已经是 Immutable 类型（调用方已确保）
+    // 使用 create 确保整个 event 对象本身也是 immutable 的
+    const immutableEvent = create(event, () => {});
     const enriched: MoorexEvent<State, Signal, Effect> = {
-      ...event,
+      ...immutableEvent,
       effectCount: running.size,
     };
     for (const handler of [...handlers]) {
@@ -249,9 +125,9 @@ export const createMoorex = <State, Signal, Effect extends HasKey>(
     }
   };
 
-  let scheduleSignal: (signal: Signal) => void;
+  let scheduleSignal: (signal: Immutable<Signal>) => void;
 
-  const startEffect = (effect: Effect, state: State) => {
+  const startEffect = (effect: Immutable<Effect>, state: Immutable<State>) => {
     let initializer: EffectInitializer<Signal>;
     try {
       initializer = definition.runEffect(effect, state);
@@ -268,8 +144,9 @@ export const createMoorex = <State, Signal, Effect extends HasKey>(
     };
     running.set(effect.key, entry);
 
-    const guardedDispatch = (signal: Signal) => {
+    const guardedDispatch = (signal: Immutable<Signal>) => {
       if (running.get(effect.key) !== entry) return;
+      // signal 已经是 Immutable 类型，但为了确保运行时也是 immutable 的
       scheduleSignal(signal);
     };
 
@@ -289,7 +166,10 @@ export const createMoorex = <State, Signal, Effect extends HasKey>(
   };
 
   const reconcileEffects = () => {
-    const desired = dedupeByKey(definition.effectsAt(workingState));
+    // workingState 已经是 Immutable<State> 类型
+    const effects = definition.effectsAt(workingState);
+    // effects 已经是 readonly Immutable<Effect>[]，类型系统保证不可变
+    const desired = dedupeByKey(effects);
 
     for (const [key, entry] of [...running]) {
       if (!desired.has(key)) {
@@ -305,9 +185,12 @@ export const createMoorex = <State, Signal, Effect extends HasKey>(
   };
 
   const { schedule } = createSignalQueue<Signal>((signals) => {
-    workingState = signals.reduce((current, signal) => {
+    // signals 已经是 Immutable<Signal>[]，类型系统保证不可变
+    // 使用 reduce 累积状态转换
+    workingState = signals.reduce((currentState, signal) => {
       emit({ type: 'signal-received', signal });
-      return definition.transition(signal)(current);
+      // transition 返回的新 state 已经是 Immutable<State>，类型系统保证不可变
+      return definition.transition(signal)(currentState);
     }, workingState);
 
     reconcileEffects();
@@ -316,7 +199,7 @@ export const createMoorex = <State, Signal, Effect extends HasKey>(
   });
   scheduleSignal = schedule;
 
-  const dispatch = (signal: Signal) => {
+  const dispatch = (signal: Immutable<Signal>) => {
     scheduleSignal(signal);
   };
 

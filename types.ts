@@ -1,0 +1,142 @@
+import { type Immutable } from 'mutative';
+
+/**
+ * 具有 key 属性的类型约束
+ */
+export type HasKey = { key: string };
+
+/**
+ * 取消函数类型
+ */
+export type CancelFn = () => void;
+
+/**
+ * Effect 初始化器
+ */
+export type EffectInitializer<Signal> = {
+  start: (dispatch: (signal: Immutable<Signal>) => void) => Promise<void>;
+  cancel: CancelFn;
+};
+
+/**
+ * 定义 Moore 机器的配置。
+ *
+ * Moorex 是一个通用的异步 Moore 机器，它跟踪状态，严格从当前状态驱动 effects，
+ * 并在状态改变时协调这些 effects。设计初衷是构建持久化的 AI agents，这些 agents
+ * 必须在崩溃、重启或迁移时存活，同时能够恢复未完成的工作。
+ *
+ * 所有函数参数和返回值都是 Immutable 的，确保不可修改。
+ *
+ * @template State - 机器的状态类型
+ * @template Signal - 信号类型，用于触发状态转换
+ * @template Effect - Effect 类型，必须包含 `key: string` 属性
+ */
+export type MoorexDefinition<State, Signal, Effect extends HasKey> = {
+  /** 初始状态 */
+  initialState: Immutable<State>;
+  /**
+   * 状态转换函数。
+   * 接收一个 Immutable 信号，返回一个函数，该函数接收 Immutable 状态并返回新的 Immutable 状态。
+   * 参数和返回值都是 Immutable 的，不允许修改。
+   */
+  transition: (signal: Immutable<Signal>) => (state: Immutable<State>) => Immutable<State>;
+  /**
+   * 根据当前状态计算应该运行的 effects。
+   * 接收 Immutable 状态，返回 Immutable Effect 数组。
+   * 参数和返回值都是 Immutable 的，不允许修改。
+   * 返回的 effects 会根据 `key` 去重。
+   */
+  effectsAt: (state: Immutable<State>) => readonly Immutable<Effect>[];
+  /**
+   * 运行一个 effect。
+   * 接收 Immutable effect 和 Immutable state，返回一个初始化器，包含 `start` 和 `cancel` 方法。
+   * 参数都是 Immutable 的，不允许修改。
+   *
+   * @param effect - 要运行的 effect（Immutable）
+   * @param state - 生成该 effect 时的状态（Immutable）
+   */
+  runEffect: (
+    effect: Immutable<Effect>,
+    state: Immutable<State>,
+  ) => EffectInitializer<Signal>;
+};
+
+/**
+ * Moorex 事件基础类型
+ */
+export type MoorexEventBase<State, Signal, Effect extends HasKey> =
+  | { type: 'signal-received'; signal: Immutable<Signal> }
+  | { type: 'state-updated'; state: Immutable<State> }
+  | { type: 'effect-started'; effect: Immutable<Effect> }
+  | { type: 'effect-completed'; effect: Immutable<Effect> }
+  | { type: 'effect-canceled'; effect: Immutable<Effect> }
+  | { type: 'effect-failed'; effect: Immutable<Effect>; error: unknown };
+
+/**
+ * Moorex 机器发出的事件。
+ *
+ * 所有事件都包含 `effectCount` 字段，表示事件处理时仍在运行的 effects 数量。
+ *
+ * 事件类型包括：
+ * - `signal-received`: 信号被接收并处理
+ * - `state-updated`: 状态已更新
+ * - `effect-started`: Effect 已启动
+ * - `effect-completed`: Effect 成功完成
+ * - `effect-canceled`: Effect 被取消
+ * - `effect-failed`: Effect 失败（包含错误信息）
+ *
+ * @template State - 机器的状态类型
+ * @template Signal - 信号类型
+ * @template Effect - Effect 类型
+ */
+export type MoorexEvent<State, Signal, Effect extends HasKey> = MoorexEventBase<
+  State,
+  Signal,
+  Effect
+> & {
+  /** 当前仍在运行的 effects 数量 */
+  effectCount: number;
+};
+
+/**
+ * Moorex 机器实例。
+ *
+ * 提供状态管理、信号分发和事件订阅功能。
+ *
+ * @template State - 机器的状态类型
+ * @template Signal - 信号类型
+ * @template Effect - Effect 类型
+ */
+export type Moorex<State, Signal, Effect extends HasKey> = {
+  /**
+   * 分发一个信号以触发状态转换。
+   * 信号会被加入队列，在下一个微任务中批量处理。
+   * 参数必须是 Immutable 的，不允许修改。
+   */
+  dispatch(signal: Immutable<Signal>): void;
+  /**
+   * 订阅事件。
+   * 返回一个取消订阅的函数。
+   *
+   * @param handler - 事件处理函数
+   * @returns 取消订阅的函数
+   */
+  on(handler: (event: MoorexEvent<State, Signal, Effect>) => void): CancelFn;
+  /**
+   * 获取当前状态。
+   * 返回已提交的状态（不包括正在处理中的 workingState）。
+   * 返回的状态是 Immutable 的，不允许修改。
+   */
+  getState(): Immutable<State>;
+};
+
+/**
+ * 运行中的 Effect（内部使用）
+ */
+export type RunningEffect<Effect extends HasKey> = {
+  key: string;
+  effect: Immutable<Effect>;
+  complete: Promise<void>;
+  cancel: CancelFn;
+};
+
