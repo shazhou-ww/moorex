@@ -7,17 +7,17 @@ import type { CancelFn } from './types';
  * @template Event - 事件类型
  * @returns 事件发射器对象，包含 emit 和 on 方法
  */
-export const createEventEmitter = <E>() => {
-  const handlers = new Set<(event: E) => void>();
+export const createEventEmitter = <Event>() => {
+  const handlers = new Set<(event: Event) => void>();
 
-  const emit = (event: E) => {
+  const emit = (event: Event) => {
     const immutableEvent = create(event, () => {});
     for (const handler of handlers) {
       handler(immutableEvent);
     }
   };
 
-  const on = (handler: (event: E) => void): CancelFn => {
+  const on = (handler: (event: Event) => void): CancelFn => {
     handlers.add(handler);
     return () => handlers.delete(handler);
   };
