@@ -6,28 +6,6 @@ the state changes. The design originated from building **persistent AI agents**
 that must survive crashes, restarts, or migrations while resuming unfinished
 work.
 
-## Why Moorex for Persistent Agents?
-
-An AI agent often interacts with users and tools while invoking large language
-models (LLMs). The agent can crash mid-task, be suspended, or migrate across
-nodes. To resume faithfully, we must restore:
-
-- The agent's internal state (messages, pending tool calls, etc.)
-- Every in-flight side effect (outstanding LLM invocations, tool executions)
-
-This agent fits the Moore machine model beautifully: **state determines which
-effects should be running**.
-
-- **Signals**: user messages, tool messages, assistant messages.
-- **State**: full conversation history, pending outbound messages, pending tool
-  calls.
-- **Effects**: actions implied by the state, e.g. invoking the LLM, executing a
-  tool, or idling when nothing remains.
-
-With Moorex, after rehydrating state we run effect reconciliation and the agent
-continues exactly where it left off. No effect can exist without corresponding
-state, and removing state automatically cancels redundant effects.
-
 ## Getting Started
 
 Install Moorex and its peer dependency:
@@ -60,6 +38,108 @@ const machine = createMoorex(definition);
 machine.on((event) => console.log(event));
 machine.dispatch({ /* your signal */ });
 ```
+
+## Defining a Moorex Machine
+
+To create a Moorex machine, you define **three types** and **four functions**:
+
+### Three Types
+
+1. **`State`**: The shape of your machine's internal state. Represents the
+   current configuration of your agent or application.
+
+2. **`Signal`**: Input events that trigger state transitions. Examples: user
+   messages, tool responses, timer ticks.
+
+3. **`Effect`**: Side effects implied by the state. Examples: LLM API calls,
+   tool executions, timeouts. Note: Effect types no longer need a `key`
+   property; the Record key from `effectsAt` serves as the identifier.
+
+All three types must be **immutable** (read-only). See the [Immutability](#immutability)
+section below for details.
+
+### Four Functions
+
+1. **`initiate(): Immutable<State>`**: Returns the initial state. Can hydrate
+   from persistent storage for recovery.
+
+2. **`transition(signal: Immutable<Signal>): (state: Immutable<State>) => Immutable<State>`**:
+   A pure reducer function. Takes a signal and returns a function that transforms
+   the current state into the next state. Must not mutate the input state.
+
+3. **`effectsAt(state: Immutable<State>): Record<string, Immutable<Effect>>`**:
+   Returns a Record (key-value map) of effects that should be running based on
+   the current state. The Record keys serve as stable effect identifiers for
+   reconciliation.
+
+4. **`runEffect(effect: Immutable<Effect>, state: Immutable<State>): EffectInitializer<Signal>`**:
+   Creates an initializer with `start` and `cancel` methods to execute and abort
+   each effect. Receives both the effect and the state that generated it.
+
+These four functions form a `MoorexDefinition<State, Signal, Effect>`, which you
+pass to `createMoorex()` to instantiate the machine.
+
+## Why Moorex for Persistent Agents?
+
+An AI agent often interacts with users and tools while invoking large language
+models (LLMs). The agent can crash mid-task, be suspended, or migrate across
+nodes. To resume faithfully, we must restore:
+
+- The agent's internal state (messages, pending tool calls, etc.)
+- Every in-flight side effect (outstanding LLM invocations, tool executions)
+
+This agent fits the Moore machine model beautifully: **state determines which
+effects should be running**.
+
+- **Signals**: user messages, tool messages, assistant messages.
+- **State**: full conversation history, pending outbound messages, pending tool
+  calls.
+- **Effects**: actions implied by the state, e.g. invoking the LLM, executing a
+  tool, or idling when nothing remains.
+
+With Moorex, after rehydrating state we run effect reconciliation and the agent
+continues exactly where it left off. No effect can exist without corresponding
+state, and removing state automatically cancels redundant effects.
+
+## Defining a Moorex Machine
+
+To create a Moorex machine, you define **three types** and **four functions**:
+
+### Three Types
+
+1. **`State`**: The shape of your machine's internal state. Represents the
+   current configuration of your agent or application.
+
+2. **`Signal`**: Input events that trigger state transitions. Examples: user
+   messages, tool responses, timer ticks.
+
+3. **`Effect`**: Side effects implied by the state. Examples: LLM API calls,
+   tool executions, timeouts. Note: Effect types no longer need a `key`
+   property; the Record key from `effectsAt` serves as the identifier.
+
+All three types must be **immutable** (read-only). See the [Immutability](#immutability)
+section below for details.
+
+### Four Functions
+
+1. **`initiate(): Immutable<State>`**: Returns the initial state. Can hydrate
+   from persistent storage for recovery.
+
+2. **`transition(signal: Immutable<Signal>): (state: Immutable<State>) => Immutable<State>`**:
+   A pure reducer function. Takes a signal and returns a function that transforms
+   the current state into the next state. Must not mutate the input state.
+
+3. **`effectsAt(state: Immutable<State>): Record<string, Immutable<Effect>>`**:
+   Returns a Record (key-value map) of effects that should be running based on
+   the current state. The Record keys serve as stable effect identifiers for
+   reconciliation.
+
+4. **`runEffect(effect: Immutable<Effect>, state: Immutable<State>): EffectInitializer<Signal>`**:
+   Creates an initializer with `start` and `cancel` methods to execute and abort
+   each effect. Receives both the effect and the state that generated it.
+
+These four functions form a `MoorexDefinition<State, Signal, Effect>`, which you
+pass to `createMoorex()` to instantiate the machine.
 
 ## Immutability
 
